@@ -2,12 +2,13 @@
 // a browser whose dvh/100vh resolve to the LARGE viewport (URL bar hidden) while the
 // area the user can actually see is shorter. visualViewport is stubbed to report the
 // shorter visible height, which is what the page must lay out against.
-import { APP_URL, connect, createProfile, evalJson, launchChrome, removeProfile, sleep } from './helpers.mjs';
+import { APP_URL, connect, createProfile, evalJson, freePort, launchChrome, sleep, trackChrome } from './helpers.mjs';
 
-const PORT = 9342;
+const PORT = await freePort();
 const PROFILE = createProfile('hp-visible-verify');
 
 const chrome = launchChrome({ port: PORT, profile: PROFILE });
+const cleanup = trackChrome(chrome, PROFILE);
 const { cdp, sessionId, ws } = await connect(PORT);
 const ev = (e) => evalJson(cdp, sessionId, e);
 
@@ -225,5 +226,5 @@ await cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: idIos }
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
 ws.close(); chrome.kill();
-removeProfile(PROFILE);
+cleanup();
 process.exit(failed.length ? 1 : 0);

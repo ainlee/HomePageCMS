@@ -1,11 +1,12 @@
 // Checks the preview panel collapse behaviour: collapsing must move the divider and
 // hand the freed space to the editor, and the collapsed strip must stay expandable.
-import { APP_URL, connect, createProfile, evalJson, launchChrome, removeProfile, sleep, waitForApp } from './helpers.mjs';
+import { APP_URL, connect, createProfile, evalJson, freePort, launchChrome, sleep, trackChrome, waitForApp } from './helpers.mjs';
 
-const DEVTOOLS_PORT = 9333;
+const DEVTOOLS_PORT = await freePort();
 const PROFILE = createProfile('hp-verify');
 
 const chrome = launchChrome({ port: DEVTOOLS_PORT, profile: PROFILE });
+const cleanup = trackChrome(chrome, PROFILE);
 const { cdp, sessionId, ws } = await connect(DEVTOOLS_PORT);
 
 const setViewport = (width, height, mobile) =>
@@ -151,7 +152,14 @@ check('desktop: dragging the divider reopens a collapsed preview',
   `collapsed=${d2.collapsed} preview.w=${d2.preview.w}px`);
 
 // 5) hide/show preview from the topbar must still give the editor the full width
-await evalJson(cdp, sessionId, `document.querySelectorAll('.topbar-right .btn')[0].click()`);
+// The topbar button is found by its visible label, not by position: adding a button
+// there (the runtime settings gear) must not change which control this exercises.
+const topbarBtn = (label) => `(() => {
+  const b = [...document.querySelectorAll('.topbar-right .btn')].find(x => x.textContent.includes('${label}'));
+  if (b) b.click();
+  return !!b;
+})()`;
+await evalJson(cdp, sessionId, topbarBtn('隱藏預覽'));
 await sleep(450);
 const h1 = await geom();
 check('desktop: hiding the preview gives the editor full width',
@@ -159,7 +167,7 @@ check('desktop: hiding the preview gives the editor full width',
   h1.preview.w === 0 && h1.resizer.w === 0 && h1.editor.w >= h1.main.w - 2,
   `editor.w=${h1.editor.w} main.w=${h1.main.w} preview.w=${h1.preview.w} resizer.w=${h1.resizer.w}`);
 
-await evalJson(cdp, sessionId, `document.querySelectorAll('.topbar-right .btn')[0].click()`);
+await evalJson(cdp, sessionId, topbarBtn('顯示預覽'));
 await sleep(450);
 const h2 = await geom();
 check('desktop: showing the preview again restores the split',
@@ -206,6 +214,5 @@ const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
 
 ws.close();
-chrome.kill();
-removeProfile(PROFILE);
+cleanup();
 process.exit(failed.length ? 1 : 0);

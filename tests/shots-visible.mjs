@@ -3,13 +3,14 @@
 // what the phone shows, so the collapsed strip and the last service group must be in it.
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { APP_URL, connect, createProfile, evalJson, launchChrome, removeProfile, sleep } from './helpers.mjs';
+import { APP_URL, connect, createProfile, evalJson, freePort, launchChrome, sleep, trackChrome } from './helpers.mjs';
 
 const OUT = join(process.cwd(), 'shots') + '\\';
-const PORT = 9346;
+const PORT = await freePort();
 const PROFILE = createProfile('hp-shots-visible');
 const VISIBLE = 600;
 const chrome = launchChrome({ port: PORT, profile: PROFILE });
+const cleanup = trackChrome(chrome, PROFILE);
 const { cdp, sessionId, ws } = await connect(PORT);
 const ev = (e) => evalJson(cdp, sessionId, e);
 const click = async (x, y) => {
@@ -43,4 +44,4 @@ await sleep(600);
 await shot('phone-visible-collapsed.png');
 
 ws.close(); chrome.kill();
-removeProfile(PROFILE);
+cleanup();

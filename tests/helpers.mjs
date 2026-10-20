@@ -1,6 +1,7 @@
 // Shared setup for the headless-Chrome checks.
 import { existsSync, rmSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -34,6 +35,20 @@ export function launchChrome({ port, profile }) {
   ], { stdio: 'ignore' });
 }
 
+// A fixed devtools port makes concurrent or interrupted runs collide: the next run
+// binds nothing, connects to the leftover Chrome instead, and then waits forever on
+// a page it never opened. Ask the OS for a free port instead.
+export function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
 // A profile directory per run. Reusing a fixed path fails with EPERM when a previous
 // Chrome is still shutting down and holding the directory, so each run gets its own.
 export function createProfile(name) {
@@ -45,6 +60,20 @@ export function createProfile(name) {
 // Best-effort cleanup; the directory is in the temp folder, so a failure here is harmless.
 export function removeProfile(dir) {
   try { rmSync(dir, { recursive: true, force: true }); } catch {}
+}
+
+// Make sure the headless Chrome dies with the test, including on failure. A leftover
+// instance keeps its devtools port and profile locked, which breaks the next run.
+export function trackChrome(chrome, profile) {
+  const cleanup = () => {
+    try { chrome.kill(); } catch {}
+    removeProfile(profile);
+  };
+  process.on('exit', cleanup);
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => { cleanup(); process.exit(1); });
+  }
+  return cleanup;
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
