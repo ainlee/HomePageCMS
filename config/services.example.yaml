@@ -30,7 +30,10 @@
         href: https://llm.example.com
         description: AI API 管理平台
         icon: mdi-api
-        customapi: https://llm.example.com/api/health
+        # Upstream Homepage puts the custom API widget in a `widget` object.
+        widget:
+            type: customapi
+            url: https://llm.example.com/api/health
 
 - 其他服務:
     - SillyTavern:

@@ -30,6 +30,10 @@ createApp({
     const movingFromGroup = ref(null);
     const dragOverGroup = ref(null);
     const backups = ref([]);
+    // Hash of the config files as they were when they were loaded. A save sends it
+    // back so the server can refuse to overwrite a file that changed in the meantime.
+    const servicesHash = ref(null);
+    const bookmarksHash = ref(null);
     const toast = reactive({ show: false, msg: '', type: 'success' });
 
     // Where the editor reads its config, where it writes backups, and where its own
@@ -189,6 +193,7 @@ createApp({
         const json = await res.json();
         if (json.success && json.data) {
           groups.value = parseYamlData(json.data);
+          servicesHash.value = json.hash || null;
         }
       } catch (err) {
         showToast('載入失敗: ' + err.message, 'error');
@@ -202,6 +207,7 @@ createApp({
         const json = await res.json();
         if (json.success && json.data) {
           bookmarkGroups.value = parseBookmarkData(json.data);
+          bookmarksHash.value = json.hash || null;
         }
       } catch (err) {
         showToast('載入書籤失敗: ' + err.message, 'error');
@@ -216,20 +222,40 @@ createApp({
         return {
           id: uid(),
           name,
+          sourceName: name,
+          source: groupObj,
           collapsed: false,
-          items: items.map(item => {
-            const itemName = Object.keys(item)[0];
-            const confArr = item[itemName] || [];
-            const conf = Array.isArray(confArr) && confArr.length > 0 ? confArr[0] : {};
+          items: items.map(entry => {
+            const itemName = Object.keys(entry)[0];
+            const raw = entry[itemName];
+            // Upstream stores the bookmark fields as a list holding one mapping.
+            const conf = Array.isArray(raw) ? (raw[0] || {}) : (raw || {});
             return {
               id: uid(),
               name: itemName,
               abbr: conf.abbr || itemName.slice(0, 2).toUpperCase(),
-              href: conf.href || ''
+              href: conf.href || '',
+              source: conf
             };
           })
         };
       });
+    }
+
+    // ---- YAML ----
+    // The editor keeps the parsed YAML objects and writes them back with only the
+    // fields it actually edited replaced. Fields the editor does not model
+    // (siteMonitor, widget, server, ...) therefore survive a save untouched.
+    const yamlLib = window.jsyaml;
+    const SERVICES_HEADER =
+      '---\n# For configuration options and examples, please see:\n' +
+      '# https://gethomepage.dev/configs/services/\n\n';
+    const BOOKMARKS_HEADER =
+      '---\n# For configuration options and examples, please see:\n' +
+      '# https://gethomepage.dev/configs/bookmarks\n\n';
+
+    function setOrDelete(obj, key, value) {
+      if (value) obj[key] = value; else delete obj[key];
     }
 
     function parseYamlData(data) {
@@ -240,30 +266,85 @@ createApp({
         return {
           id: uid(),
           name,
-          colSpan: 1,
+          sourceName: name,
+          source: groupObj,
+          colSpan: Number(groupObj['col-span']) || 1,
           collapsed: false,
-          items: items.map(item => {
-            const itemName = Object.keys(item)[0];
-            const conf = item[itemName] || {};
-            let widgetType = 'none';
-            let widgetValue = '';
-            if (conf.container) { widgetType = 'container'; widgetValue = conf.container; }
-            else if (conf.ping) { widgetType = 'ping'; widgetValue = conf.ping; }
-            else if (conf.customapi) { widgetType = 'customapi'; widgetValue = conf.customapi; }
-            let iconType = 'mdi';
-            let icon = conf.icon || '';
-            if (icon && !icon.startsWith('mdi-') && icon.startsWith('http')) iconType = 'url';
-            return {
-              id: uid(),
-              name: itemName,
-              href: conf.href || '',
-              description: conf.description || '',
-              target: conf.target || '',
-              icon, iconType, widgetType, widgetValue
-            };
-          })
+          items: items.map(item => parseServiceItem(Object.keys(item)[0], item[Object.keys(item)[0]]))
         };
       });
+    }
+
+    function parseServiceItem(itemName, conf) {
+      if (Array.isArray(conf)) {
+        // A nested group (upstream allows groups inside groups). The editor cannot
+        // model it, so it is kept exactly as it was.
+        return { id: uid(), name: itemName, href: '', description: '', target: '',
+          icon: '', iconType: 'mdi', widgetType: 'none', widgetValue: '',
+          widgetDialect: 'none', nested: true, source: conf };
+      }
+      const config = conf && typeof conf === 'object' ? conf : {};
+      const widget = readWidget(config);
+      let iconType = 'mdi';
+      let icon = config.icon || '';
+      if (icon && !icon.startsWith('mdi-') && icon.startsWith('http')) iconType = 'url';
+      return {
+        id: uid(),
+        name: itemName,
+        href: config.href || '',
+        description: config.description || '',
+        target: config.target || '',
+        icon, iconType,
+        widgetType: widget.type, widgetValue: widget.value, widgetDialect: widget.dialect,
+        nested: false,
+        source: config
+      };
+    }
+
+    // Reads the status widget out of a service, whichever shape the file uses:
+    // upstream's `widget` object, the legacy service-level `customapi` field, or the
+    // `container` / `ping` shorthands.
+    function readWidget(conf) {
+      const w = conf.widget;
+      if (w && typeof w === 'object') {
+        if (w.type === 'customapi') return { type: 'customapi', value: String(w.url || ''), dialect: 'widget' };
+        if (w.type === 'ping') return { type: 'ping', value: String(w.host || w.url || ''), dialect: 'widget' };
+        if (w.type === 'docker') return { type: 'container', value: String(w.container || ''), dialect: 'widget' };
+      }
+      if (conf.customapi) return { type: 'customapi', value: String(conf.customapi), dialect: 'legacy' };
+      if (conf.container) return { type: 'container', value: String(conf.container), dialect: 'shorthand' };
+      if (conf.ping) return { type: 'ping', value: String(conf.ping), dialect: 'shorthand' };
+      return { type: 'none', value: '', dialect: 'none' };
+    }
+
+    // Writes the widget back in the shape the file already used, so a service that
+    // used the legacy `customapi` field keeps using it and a service that used
+    // upstream's `widget` object keeps its shape.
+    function writeWidget(conf, item) {
+      const type = item.widgetType;
+      const value = (item.widgetValue || '').trim();
+      const w = conf.widget;
+      const base = (w && typeof w === 'object' && ['customapi', 'ping', 'docker'].includes(w.type)) ? { ...w } : {};
+
+      // Drop the shapes the editor models so that changing the type does not leave the
+      // old one behind. Widgets the editor does not model (glances, ...) stay as they are.
+      if (Object.keys(base).length) delete conf.widget;
+      delete conf.container;
+      delete conf.ping;
+      delete conf.customapi;
+
+      if (type === 'none' || !value) return;
+
+      if (type === 'container') {
+        if (item.widgetDialect === 'widget') conf.widget = { ...base, type: 'docker', container: value };
+        else conf.container = value;
+      } else if (type === 'ping') {
+        if (item.widgetDialect === 'widget') conf.widget = { ...base, type: 'ping', host: value };
+        else conf.ping = value;
+      } else if (type === 'customapi') {
+        if (item.widgetDialect === 'legacy') conf.customapi = value;
+        else conf.widget = { ...base, type: 'customapi', url: value };
+      }
     }
 
     // Save
@@ -274,10 +355,11 @@ createApp({
         const res = await fetch('/api/services', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ raw: yaml })
+          body: JSON.stringify({ raw: yaml, hash: servicesHash.value })
         });
         const json = await res.json();
         if (json.success) {
+          servicesHash.value = json.hash || null;
           showToast('已儲存');
           refreshPreview();
         } else {
@@ -296,17 +378,19 @@ createApp({
           fetch('/api/services', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ raw: buildYaml() })
+            body: JSON.stringify({ raw: buildYaml(), hash: servicesHash.value })
           }),
           fetch('/api/bookmarks', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ raw: buildBookmarkYaml() })
+            body: JSON.stringify({ raw: buildBookmarkYaml(), hash: bookmarksHash.value })
           })
         ]);
         const svcJson = await svcRes.json();
         const bmJson = await bmRes.json();
         if (svcJson.success && bmJson.success) {
+          servicesHash.value = svcJson.hash || null;
+          bookmarksHash.value = bmJson.hash || null;
            showToast('已儲存');
            refreshPreview();
          } else {
@@ -319,22 +403,35 @@ createApp({
      }
 
     function buildYaml() {
-      const lines = ['---', '# For configuration options and examples, please see:', '# https://gethomepage.dev/configs/services/', ''];
-      groups.value.forEach(group => {
-        lines.push('- ' + group.name + ':');
-        group.items.forEach(item => {
-          lines.push('    - ' + item.name + ':');
-          if (item.href) lines.push('        href: ' + item.href);
-          if (item.target) lines.push('        target: ' + item.target);
-          if (item.description) lines.push('        description: ' + item.description);
-          if (item.icon) lines.push('        icon: ' + item.icon);
-          if (item.widgetType === 'container' && item.widgetValue) lines.push('        container: ' + item.widgetValue);
-          if (item.widgetType === 'ping' && item.widgetValue) lines.push('        ping: ' + item.widgetValue);
-          if (item.widgetType === 'customapi' && item.widgetValue) lines.push('        customapi: ' + item.widgetValue);
+      const doc = groups.value.map(group => {
+        const items = group.items.map(item => {
+          const entry = {};
+          if (item.nested) {
+            // A nested group stays exactly as it was.
+            entry[item.name] = item.source;
+            return entry;
+          }
+          const conf = { ...(item.source || {}) };
+          writeWidget(conf, item);
+          setOrDelete(conf, 'href', item.href);
+          setOrDelete(conf, 'target', item.target);
+          setOrDelete(conf, 'description', item.description);
+          setOrDelete(conf, 'icon', item.icon);
+          entry[item.name] = conf;
+          return entry;
         });
-        lines.push('');
+        const obj = {};
+        // The group name has to stay the first key: upstream reads the first key of a
+        // group object as the group name.
+        obj[group.name] = items;
+        for (const [key, value] of Object.entries(group.source || {})) {
+          if (key === group.sourceName || key === 'col-span') continue;
+          obj[key] = value;
+        }
+        if (group.colSpan > 1) obj['col-span'] = group.colSpan;
+        return obj;
       });
-      return lines.join('\n');
+      return SERVICES_HEADER + yamlLib.dump(doc, { lineWidth: -1 });
     }
 
     // Group CRUD
@@ -425,17 +522,24 @@ createApp({
     }
 
     function buildBookmarkYaml() {
-      const lines = ['---', '# For configuration options and examples, please see:', '# https://gethomepage.dev/configs/bookmarks', ''];
-      bookmarkGroups.value.forEach(group => {
-        lines.push('- ' + group.name + ':');
-        group.items.forEach(item => {
-          lines.push('    - ' + item.name + ':');
-          lines.push('        - abbr: ' + item.abbr);
-          lines.push('          href: ' + item.href);
+      const doc = bookmarkGroups.value.map(group => {
+        const items = group.items.map(item => {
+          const props = { ...(item.source || {}) };
+          setOrDelete(props, 'abbr', item.abbr);
+          setOrDelete(props, 'href', item.href);
+          const entry = {};
+          entry[item.name] = [props];
+          return entry;
         });
-        lines.push('');
+        const obj = {};
+        obj[group.name] = items;
+        for (const [key, value] of Object.entries(group.source || {})) {
+          if (key === group.sourceName) continue;
+          obj[key] = value;
+        }
+        return obj;
       });
-      return lines.join('\n');
+      return BOOKMARKS_HEADER + yamlLib.dump(doc, { lineWidth: -1 });
     }
 
     async function saveBookmarks() {
@@ -444,10 +548,11 @@ createApp({
         const res = await fetch('/api/bookmarks', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ raw: yaml })
+          body: JSON.stringify({ raw: yaml, hash: bookmarksHash.value })
         });
         const json = await res.json();
         if (json.success) {
+          bookmarksHash.value = json.hash || null;
           showToast('書籤已儲存');
         } else {
           showToast('書籤儲存失敗: ' + json.error, 'error');
@@ -498,7 +603,8 @@ createApp({
           id: uid(), name: editingItem.name.trim(), href: editingItem.href.trim(),
           description: editingItem.description.trim(), target: editingItem.target,
           icon: editingItem.icon.trim(), iconType: editingItem.iconType,
-          widgetType: editingItem.widgetType, widgetValue: editingItem.widgetValue.trim()
+          widgetType: editingItem.widgetType, widgetValue: editingItem.widgetValue.trim(),
+          widgetDialect: 'none', nested: false, source: null
         });
       }
       showItemModal.value = false;

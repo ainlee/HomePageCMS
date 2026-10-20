@@ -3,6 +3,7 @@ const yaml = require('js-yaml');
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3456;
@@ -24,6 +25,9 @@ const BOOKMARKS_FILE = path.join(CONFIG_PATH, 'bookmarks.yaml');
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+// The browser needs a YAML writer to produce the files. Serving it from the installed
+// package keeps the editor working without reaching out to a CDN.
+app.use('/vendor', express.static(path.join(__dirname, 'node_modules', 'js-yaml', 'dist')));
 
 // Ensure directories exist
 if (!fs.existsSync(CONFIG_PATH)) fs.mkdirSync(CONFIG_PATH, { recursive: true });
@@ -121,6 +125,14 @@ function copyBackup(file, prefix) {
   fs.copyFileSync(file, path.join(BACKUP_DIR, `${prefix}-${timestamp}.yaml`));
 }
 
+// A hash of the file as it was when the browser loaded it. If the file changed on disk
+// in the meantime (another tool, or Homepage itself), a save would silently discard
+// those changes, so the save is refused instead.
+function fileHash(file) {
+  if (!fs.existsSync(file)) return null;
+  return crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex');
+}
+
 // Seed a fresh install from the committed examples so the editor has something to show
 // on first run. An existing config is never touched.
 for (const name of ['services', 'bookmarks']) {
@@ -136,11 +148,11 @@ for (const name of ['services', 'bookmarks']) {
 app.get('/api/services', (req, res) => {
   try {
     if (!fs.existsSync(SERVICES_FILE)) {
-      return res.json({ success: true, data: [], raw: '' });
+      return res.json({ success: true, data: [], raw: '', hash: null });
     }
     const content = fs.readFileSync(SERVICES_FILE, 'utf8');
     const data = yaml.load(content);
-    res.json({ success: true, data, raw: content });
+    res.json({ success: true, data, raw: content, hash: fileHash(SERVICES_FILE) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -150,19 +162,29 @@ app.get('/api/services', (req, res) => {
 app.get('/api/bookmarks', (req, res) => {
   try {
     if (!fs.existsSync(BOOKMARKS_FILE)) {
-      return res.json({ success: true, data: [], raw: '' });
+      return res.json({ success: true, data: [], raw: '', hash: null });
     }
     const content = fs.readFileSync(BOOKMARKS_FILE, 'utf8');
     const data = yaml.load(content);
-    res.json({ success: true, data, raw: content });
+    res.json({ success: true, data, raw: content, hash: fileHash(BOOKMARKS_FILE) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
+// Refuse a save when the file changed on disk since the browser loaded it.
+function checkUnchanged(file, expected) {
+  if (!expected) return null;
+  const current = fileHash(file);
+  if (current === expected) return null;
+  return '設定檔在載入後被其他程式改動過，請先重新載入再編輯，以免覆蓋那些變更';
+}
+
 // PUT /api/services - write services.yaml with backup
 app.put('/api/services', (req, res) => {
   try {
+    const conflict = checkUnchanged(SERVICES_FILE, req.body?.hash);
+    if (conflict) return res.status(409).json({ success: false, error: conflict });
     const { raw } = req.body;
 
     // Create backup with timestamp
@@ -171,7 +193,7 @@ app.put('/api/services', (req, res) => {
     // Write new content
     fs.writeFileSync(SERVICES_FILE, raw, 'utf8');
 
-    res.json({ success: true });
+    res.json({ success: true, hash: fileHash(SERVICES_FILE) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -180,6 +202,8 @@ app.put('/api/services', (req, res) => {
 // PUT /api/bookmarks - write bookmarks.yaml with backup
 app.put('/api/bookmarks', (req, res) => {
   try {
+    const conflict = checkUnchanged(BOOKMARKS_FILE, req.body?.hash);
+    if (conflict) return res.status(409).json({ success: false, error: conflict });
     const { raw } = req.body;
 
     // Create backup with timestamp
@@ -188,7 +212,7 @@ app.put('/api/bookmarks', (req, res) => {
     // Write new content
     fs.writeFileSync(BOOKMARKS_FILE, raw, 'utf8');
 
-    res.json({ success: true });
+    res.json({ success: true, hash: fileHash(BOOKMARKS_FILE) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
