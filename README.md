@@ -98,23 +98,27 @@ server.js        Express API 與靜態檔服務
 ## 開發工具
 
 三個工具的**規格內容**跟進版本庫，**工具本體**則是安裝產物，由全域安裝提供。
+各工具更新時都會整份覆寫自己的產物，提交進來只會製造大 diff，也會把開發者
+各自的偏好綁進這個倉庫。
 
 | 內容 | 是否進版控 | 理由 |
 | --- | --- | --- |
-| `openspec/` 規格與 `openspec-*` 技能 | 是 | 內容綁定本專案的規格結構，openspec CLI 也沒有全域安裝選項 |
+| `openspec/specs/` 規格 | 是 | 專案本身的設計文件，說明各能力目前的行為 |
 | `AGENTS.md` / `CLAUDE.md` | 是 | 給人和 AI 讀的專案說明 |
-| `design`、`brand` 等設計技能外殼 | 是 | 輕量且會隨專案調整 |
 | `.gitnexus/` 知識圖譜 | 否 | 本機索引，每次重跑 `gitnexus analyze` 重建 |
-| `ui-ux-pro-max/` 設計資料庫 | 否 | 數 MB 的第三方資料，工具更新時整份覆寫 |
-| `gitnexus-*` 技能檔 | 否 | 由 `gitnexus analyze` 產生 |
+| `.agents/`、`.claude/` 技能檔 | 否 | 工具安裝產物，內容隨工具版本變動 |
+| `ui-ux-pro-max/` 設計資料庫 | 否 | 數 MB 的第三方資料 |
 
 全新 clone 後，用以下指令補齊工具：
 
 ```bash
 npm i -g gitnexus@latest ui-ux-pro-max-cli@latest @fission-ai/openspec@latest
-uipro init --ai codex        # 設計資料庫
-gitnexus analyze              # 知識圖譜（會順帶產生 gitnexus 技能檔）
+openspec init                 # 規格工作流（openspec/ 已存在時用 openspec update）
+uipro init --ai codex         # 設計資料庫
+gitnexus analyze --index-only # 知識圖譜
 ```
+
+`--index-only` 讓 GitNexus 不動 `AGENTS.md`（那份由人維護），也不安裝它的技能檔。
 
 ### GitNexus — 程式碼知識圖譜
 

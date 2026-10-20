@@ -1,44 +1,61 @@
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
+# HomePageCMS
 
-This project is indexed by GitNexus as **HomePageCMS** (341 symbols, 831 relationships, 4 execution flows).
+Homepage 的 YAML 設定後台。左側編輯、右側即時預覽，存檔前自動備份。
 
-> Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
+## 執行
 
-## Always Do
+```bash
+npm install
+npm start          # http://localhost:3456
+```
 
-- **MUST run impact before editing.** Use `impact({target: "symbolName", direction: "upstream"})` or `node .gitnexus/run.cjs impact "symbolName" --direction upstream --repo .`; report callers, processes, and risk. Never substitute grep for graph analysis.
-- **MUST analyze graph changes before committing.** Use `detect_changes({scope: "all"})` (MCP) or `node .gitnexus/run.cjs detect-changes --scope all --repo .` (CLI fallback). `partial: true` or `truncated: true` is not a clean check — a zero means unseen, not unaffected; re-run it. For regression review: `detect_changes({scope: "compare", base_ref: "main"})` or `node .gitnexus/run.cjs detect-changes --scope compare --base-ref "main" --repo .`.
-- MUST warn on HIGH/CRITICAL `risk` pre-edit; never use `riskSharedAxes` to waive a HIGH/CRITICAL `risk` warning. Compare File/symbol: MCP File omits axes; Graph-RAG expands File.
-- **MUST treat `risk: UNKNOWN` as unresolved, not as low.** An empty caller set is not evidence the symbol is unused — it can also mean the callers are not resolvable by the index (plain-object property access, dynamic dispatch, cross-language calls). `impact` pairs `UNKNOWN` with a `riskNote` saying so. Confirm with a text search before treating the symbol as safe to change or delete; do not proceed on the strength of a zero.
-- **MUST use `query({search_query: "concept"})` for concepts/flows, `context({name: "symbolName"})` for a named symbol, or `impact` for blast radius, on read-only callers, dependencies, imports, or execution flow.** Graph first; text search only for empty/`UNKNOWN`/literals.
-- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
+設定檔位置預設是專案下的 `config/`，可用 `HOMEPAGE_CONFIG_PATH` 指向別處
+（例如 NAS 共用資料夾）。首次啟動且設定檔不存在時，會由 `config/*.example.yaml`
+建立初始設定。範例檔是唯一該進版控的設定內容，實際設定檔不進版控。
 
-## Never Do
+## 測試
 
-- NEVER edit a function, class, or method before MCP/CLI impact analysis.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis, and never read `UNKNOWN` as an all-clear — it means the walk could not answer, which is the one verdict that requires confirming by other means.
-- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
-- NEVER commit before MCP/CLI graph change analysis.
+```bash
+npm test
+```
 
-## Resources
+三組無頭 Chrome 測試，覆蓋折疊與分割線行為、行動版版面、可見範圍量測。
+需要本機有 Chrome，且編輯器正在執行（預設 `http://localhost:3456`，可用
+`APP_URL` 覆寫，Chrome 路徑可用 `CHROME_PATH` 覆寫）。
 
-| Resource | Use for |
-| --- | --- |
-| `gitnexus://repo/HomePageCMS/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/HomePageCMS/clusters` | All functional areas |
-| `gitnexus://repo/HomePageCMS/processes` | All execution flows |
-| `gitnexus://repo/HomePageCMS/process/{name}` | Step-by-step execution trace |
+測試驗證的是**版面行為**，不是實作細節。改動版面時，測試失敗多半代表行為
+真的變了，請先確認是不是預期中的改動。
 
-## CLI
+## 慣例
 
-| Task | Read this skill file |
-| --- | --- |
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
+- **設定格式就是 Homepage 的 YAML 格式。** 不要發明私有格式，編輯器與
+  Homepage 直接共用同一份檔案。
+- **面板尺寸由 Vue 的 computed 決定**，不要在拖曳時直接寫內嵌 `width`/`height`。
+  內嵌樣式的優先級會蓋掉 `.collapsed` 類別，導致折疊時分割線不動。
+- **高度來自實測的可見範圍**，不要用 `100vh` 或 `dvh` 當最終答案。手機瀏覽器
+  這兩個值指的是網址列收起時的高版本畫面，會讓畫面底部永遠捲不到。
+- **後端 API 很薄。** 設定檔就是磁碟上的 YAML，沒有一層資料庫要同步。
+- **備份是自動的。** 寫入前一定先複製一份到 `backups/`，不要手動改流程繞開它。
 
-<!-- gitnexus:end -->
+## 規格
+
+`openspec/specs/` 記錄這個專案目前的行為，逐能力分檔，每份含需求與情境。
+改動前先看對應規格；要新增或變更行為，寫一份 OpenSpec change proposal
+而不是直接改程式碼。
+
+規格以繁體中文撰寫，但 `Requirement`、`Scenario`、`SHALL` 等結構性關鍵字
+維持英文（見 `openspec/config.yaml`）。
+
+## 開發工具
+
+本專案用 GitNexus（程式碼知識圖譜）、OpenSpec（規格驅動）、UI/UX Pro Max
+（介面設計資料庫）。三者皆為全域安裝，**產物不進版控**：
+
+```bash
+npm i -g gitnexus@latest ui-ux-pro-max-cli@latest @fission-ai/openspec@latest
+uipro init --ai codex
+gitnexus analyze --index-only
+```
+
+用 `--index-only` 是為了讓 GitNexus 不動 `AGENTS.md`（那由人維護），
+也不安裝它的技能檔。
