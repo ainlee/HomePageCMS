@@ -16,6 +16,19 @@ shots/
 # Local GitNexus knowledge graph. Rebuilt by `gitnexus analyze`; never committed.
 .gitnexus/
 
+# ==== 工具 skill：全域安裝為單一來源 =====================================
+# 底下的 skill 是安裝產物，不是專案原始碼：
+#   gitnexus      : npm i -g gitnexus@latest && gitnexus analyze
+#   ui-ux-pro-max : npm i -g ui-ux-pro-max-cli@latest && uipro init --ai codex
+# 兩者更新時都會整份覆寫，提交進來只會製造大 diff，且把數 MB 的第三方資料
+# 放進版控。資料庫的「查詢結果」是本專案的產物，工具本身不是。
+.agents/skills/ui-ux-pro-max/
+.agents/skills/gitnexus*/
+.claude/skills/gitnexus*/
+
+# 例外：OpenSpec 的 skill 刻意留在專案內。openspec CLI 沒有全域安裝選項，
+# 內容也綁定本專案的 openspec/ 結構。
+
 *.log
 .env
 .DS_Store

@@ -97,7 +97,24 @@ server.js        Express API 與靜態檔服務
 
 ## 開發工具
 
-專案已整合三個工具，clone 後不需再設定。
+三個工具的**規格內容**跟進版本庫，**工具本體**則是安裝產物，由全域安裝提供。
+
+| 內容 | 是否進版控 | 理由 |
+| --- | --- | --- |
+| `openspec/` 規格與 `openspec-*` 技能 | 是 | 內容綁定本專案的規格結構，openspec CLI 也沒有全域安裝選項 |
+| `AGENTS.md` / `CLAUDE.md` | 是 | 給人和 AI 讀的專案說明 |
+| `design`、`brand` 等設計技能外殼 | 是 | 輕量且會隨專案調整 |
+| `.gitnexus/` 知識圖譜 | 否 | 本機索引，每次重跑 `gitnexus analyze` 重建 |
+| `ui-ux-pro-max/` 設計資料庫 | 否 | 數 MB 的第三方資料，工具更新時整份覆寫 |
+| `gitnexus-*` 技能檔 | 否 | 由 `gitnexus analyze` 產生 |
+
+全新 clone 後，用以下指令補齊工具：
+
+```bash
+npm i -g gitnexus@latest ui-ux-pro-max-cli@latest @fission-ai/openspec@latest
+uipro init --ai codex        # 設計資料庫
+gitnexus analyze              # 知識圖譜（會順帶產生 gitnexus 技能檔）
+```
 
 ### GitNexus — 程式碼知識圖譜
 
@@ -127,7 +144,7 @@ openspec archive <id>   # 歸檔完成的變更
 
 內建 79 種樣式、192 組配色、74 組字體配對、119 條 UX 準則與 22 種技術堆疊的查詢資料庫。
 
-技能檔安裝於 `.agents/skills/ui-ux-pro-max/`（另含 banner-design、design、design-system、ui-styling 等）。向 AI 助理提出介面相關問題時，它會查閱這份資料庫再回答。
+以 `uipro init --ai codex` 安裝到 `.agents/skills/`。其中 `ui-ux-pro-max/` 是那份查詢資料庫（不進版控，數 MB 且會被更新覆寫），`banner-design`、`design`、`design-system`、`ui-styling` 等外殼則隨專案一起版控。向 AI 助理提出介面相關問題時，它會查閱這份資料庫再回答。
 
 ## License
 
