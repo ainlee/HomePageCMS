@@ -13,6 +13,9 @@ const PORT = process.env.PORT || 3456;
 // with no setup, and nothing here is tied to one particular deployment.
 const ENV_BIND_ADDRESS = (process.env.HOST || '').trim();
 const DEFAULT_BIND_ADDRESS = '0.0.0.0';
+// Optional shared password. Without it the editor stays open, which is fine on a
+// trusted network; with it every write needs the password.
+const API_PASSWORD = (process.env.HOMEPAGE_CMS_PASSWORD || '').trim();
 const CONFIG_PATH = process.env.HOMEPAGE_CONFIG_PATH || path.join(__dirname, 'config');
 const BACKUP_DIR = process.env.HOMEPAGE_BACKUP_PATH || path.join(__dirname, 'backups');
 // The editor's own settings live in the editor's directory, not in the Homepage config
@@ -25,9 +28,12 @@ const BOOKMARKS_FILE = path.join(CONFIG_PATH, 'bookmarks.yaml');
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
-// The browser needs a YAML writer to produce the files. Serving it from the installed
-// package keeps the editor working without reaching out to a CDN.
-app.use('/vendor', express.static(path.join(__dirname, 'node_modules', 'js-yaml', 'dist')));
+// The browser needs a YAML writer, Vue and the icon font. All three are installed as
+// packages and served from node_modules, so the editor works on a network without
+// internet access.
+app.use('/vendor/js-yaml', express.static(path.join(__dirname, 'node_modules', 'js-yaml', 'dist')));
+app.use('/vendor/vue', express.static(path.join(__dirname, 'node_modules', 'vue', 'dist')));
+app.use('/vendor/mdi', express.static(path.join(__dirname, 'node_modules', '@mdi', 'font')));
 
 // Ensure directories exist
 if (!fs.existsSync(CONFIG_PATH)) fs.mkdirSync(CONFIG_PATH, { recursive: true });
@@ -145,6 +151,33 @@ for (const name of ['services', 'bookmarks']) {
 }
 
 // GET /api/services - read services.yaml
+// Every API needs the password when one is configured. The check is deliberately
+// constant-time so a wrong password cannot be guessed by timing the response.
+function passwordMatches(candidate) {
+  if (!API_PASSWORD) return true;
+  if (!candidate) return false;
+  const given = Buffer.from(candidate);
+  const expected = Buffer.from(API_PASSWORD);
+  if (given.length !== expected.length) return false;
+  return crypto.timingSafeEqual(given, expected);
+}
+
+app.use('/api', (req, res, next) => {
+  if (req.path === '/auth') return next();
+  if (!API_PASSWORD) return next();
+  const header = req.get('X-CMS-Password') || '';
+  const bearer = (req.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!passwordMatches(header || bearer)) {
+    return res.status(401).json({ success: false, error: '需要存取密碼' });
+  }
+  next();
+});
+
+// GET /api/auth - tells the browser whether a password is needed, without needing one
+app.get('/api/auth', (req, res) => {
+  res.json({ success: true, data: { required: !!API_PASSWORD } });
+});
+
 app.get('/api/services', (req, res) => {
   try {
     if (!fs.existsSync(SERVICES_FILE)) {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Homepage 編輯器</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.x/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="/vendor/mdi/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -340,9 +340,32 @@
           <label>編輯器設定檔</label>
           <p class="path-value">{{ runtimeInfo.settingsPath }}</p>
         </div>
+        <div class="form-group">
+          <label>存取保護</label>
+          <p class="field-hint">
+            <template v-if="authRequired">已啟用（密碼由環境變數 HOMEPAGE_CMS_PASSWORD 設定）</template>
+            <template v-else>未啟用——任何能連到這台機器的人都能編輯你的設定</template>
+          </p>
+        </div>
         <div class="modal-actions">
           <button @click="showSettings = false" class="btn btn-secondary">取消</button>
           <button @click="saveSettings" class="btn btn-primary">儲存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div v-if="showPasswordPrompt" class="modal-overlay">
+      <div class="modal">
+        <h2><i class="mdi mdi-lock"></i> 需要存取密碼</h2>
+        <div class="form-group">
+          <label>密碼</label>
+          <input v-model="passwordInput" type="password" placeholder="請輸入密碼" @keyup.enter="submitPassword">
+          <p class="field-hint">密碼由啟動編輯器時的環境變數 HOMEPAGE_CMS_PASSWORD 決定。</p>
+        </div>
+        <div class="modal-actions">
+          <button @click="showPasswordPrompt = false" class="btn btn-secondary">取消</button>
+          <button @click="submitPassword" class="btn btn-primary">確定</button>
         </div>
       </div>
     </div>
@@ -354,8 +377,8 @@
     </div>
   </div>
 
-  <script src="/vendor/js-yaml.min.js"></script>
-  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="/vendor/js-yaml/js-yaml.min.js"></script>
+  <script src="/vendor/vue/vue.global.prod.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

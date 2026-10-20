@@ -18,6 +18,7 @@ HOMEPAGE_CONFIG_PATH    Homepage 設定檔目錄（預設 config/）
 HOMEPAGE_BACKUP_PATH    備份目錄（預設 backups/）
 HOMEPAGE_CMS_SETTINGS   編輯器自身設定檔（預設 <專案>/cms-settings.yaml）
 HOMEPAGE_PREVIEW_URL    預覽目標（未設定時於介面設定）
+HOMEPAGE_CMS_PASSWORD   存取密碼（設定後所有 API 都需要它；不放進設定檔）
 ```
 
 首次啟動且設定檔不存在時，會由 `config/*.example.yaml` 建立初始設定。範例檔是
@@ -59,6 +60,8 @@ npm test
 - **不要把特定部署的值寫進程式碼。** 網域、路徑、埠號一律走環境變數或設定檔，
   預設值相對於專案目錄。預覽網址的決定順序是設定檔 > 環境變數 > 尚未設定，
   不要加內建預設值——猜錯只會在預覽區顯示無關的錯誤頁。
+- **前端資產不要連 CDN。** Vue、MDI 圖示、js-yaml 都是 npm 相依，由伺服器從
+  `node_modules` 提供；內網環境沒有外網也要能開得起來。
 
 ## 規格
 

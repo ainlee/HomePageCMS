@@ -41,6 +41,7 @@ Windows 使用者也可以直接執行 `start-editor.bat`。
 | `HOMEPAGE_BACKUP_PATH` | `<專案>/backups` | 備份目錄 |
 | `HOMEPAGE_CMS_SETTINGS` | `<專案>/cms-settings.yaml` | 編輯器自身的設定檔 |
 | `HOMEPAGE_PREVIEW_URL` | 無 | 預覽目標網址；未設定時需於介面設定 |
+| `HOMEPAGE_CMS_PASSWORD` | 無 | 存取密碼；設定後所有寫入 API 都需要它 |
 
 例如把設定指到 NAS 共用資料夾、備份指到掛載點、換一個連接埠：
 
@@ -76,8 +77,17 @@ Homepage 的（常是容器掛載點或 NAS 共用資料夾），不是編輯器
 重新啟動才會生效，介面會標示出來。
 
 > 綁 `0.0.0.0` 代表**任何能連到這台機器的人都能開啟編輯器並改寫你的 Homepage
-> 設定**（編輯器沒有內建帳號密碼）。請只在信任的網路使用；要對外開放請設定
-> `HOMEPAGE_CMS_PASSWORD`。
+> 設定**。請只在信任的網路使用；要對外開放請設定 `HOMEPAGE_CMS_PASSWORD`
+> （見下）。
+
+### 存取保護
+
+編輯器本身沒有帳號系統，只有一道共用密碼。設定 `HOMEPAGE_CMS_PASSWORD` 之後，
+所有 API 都必須帶上這組密碼，密碼不符會得到 401 且不會寫入任何檔案。瀏覽器會
+在需要時跳出密碼輸入框，輸入後記在該裝置上，不必每次重打。
+
+密碼只能透過環境變數設定（不放進設定檔），這樣就不會跟著備份或設定檔一起被
+複製走。設定對話框裡可以看到目前的保護狀態。
 
 ## 設定檔格式
 
@@ -255,7 +265,8 @@ MIT。詳見 [LICENSE](LICENSE)。
 | --- | --- | --- |
 | [Express](https://expressjs.com/) | MIT | npm 依賴 |
 | [js-yaml](https://github.com/nodeca/js-yaml) | MIT | npm 依賴 |
-| [Vue 3](https://vuejs.org/) | MIT | 執行時由 CDN 載入 |
-| [Material Design Icons](https://pictogrammers.com/library/mdi/) | Apache-2.0 | 執行時由 CDN 載入 |
+| [Vue 3](https://vuejs.org/) | MIT | npm 依賴，由伺服器提供 |
+| [Material Design Icons](https://pictogrammers.com/library/mdi/) | Apache-2.0 | npm 依賴，由伺服器提供 |
 
-圖示字型與 Vue 皆由 CDN 載入，倉庫內未內嵌任何第三方資產。
+前端資產全部來自 npm 依賴並由伺服器提供，頁面不會向外部網域載入任何東西，
+沒有外網的環境也能正常使用。倉庫內未內嵌任何第三方資產。

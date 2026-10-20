@@ -34,6 +34,12 @@ createApp({
     // back so the server can refuse to overwrite a file that changed in the meantime.
     const servicesHash = ref(null);
     const bookmarksHash = ref(null);
+    // Access password, when the server asks for one. Kept in the browser so it is
+    // typed once per device.
+    const apiPassword = ref(localStorage.getItem('hcms-password') || '');
+    const showPasswordPrompt = ref(false);
+    const passwordInput = ref('');
+    const authRequired = ref(false);
     const toast = reactive({ show: false, msg: '', type: 'success' });
 
     // Where the editor reads its config, where it writes backups, and where its own
@@ -189,7 +195,7 @@ createApp({
     // Load data
     async function loadServices() {
       try {
-        const res = await fetch('/api/services');
+        const res = await apiFetch('/api/services');
         const json = await res.json();
         if (json.success && json.data) {
           groups.value = parseYamlData(json.data);
@@ -203,7 +209,7 @@ createApp({
     // Load bookmarks
     async function loadBookmarks() {
       try {
-        const res = await fetch('/api/bookmarks');
+        const res = await apiFetch('/api/bookmarks');
         const json = await res.json();
         if (json.success && json.data) {
           bookmarkGroups.value = parseBookmarkData(json.data);
@@ -256,6 +262,43 @@ createApp({
 
     function setOrDelete(obj, key, value) {
       if (value) obj[key] = value; else delete obj[key];
+    }
+
+    // Every API call carries the password when the server asks for one. A 401 opens
+    // the password prompt instead of failing silently.
+    async function apiFetch(url, options = {}) {
+      const headers = Object.assign({}, options.headers || {});
+      if (apiPassword.value) headers['X-CMS-Password'] = apiPassword.value;
+      const res = await fetch(url, Object.assign({}, options, { headers }));
+      if (res.status === 401) {
+        showPasswordPrompt.value = true;
+        const err = new Error('需要存取密碼');
+        err.unauthorized = true;
+        throw err;
+      }
+      return res;
+    }
+
+    async function loadAuthState() {
+      try {
+        const res = await fetch('/api/auth');
+        const json = await res.json();
+        authRequired.value = !!(json.data && json.data.required);
+      } catch (err) {
+        // The endpoint is optional; if it cannot be reached the editor still works.
+      }
+    }
+
+    function submitPassword() {
+      apiPassword.value = passwordInput.value;
+      if (apiPassword.value) localStorage.setItem('hcms-password', apiPassword.value);
+      else localStorage.removeItem('hcms-password');
+      showPasswordPrompt.value = false;
+      passwordInput.value = '';
+      // Whatever was blocked by the 401 is loaded again, now with the password.
+      loadSettings();
+      loadServices();
+      loadBookmarks();
     }
 
     function parseYamlData(data) {
@@ -352,7 +395,7 @@ createApp({
       saving.value = true;
       try {
         const yaml = buildYaml();
-        const res = await fetch('/api/services', {
+        const res = await apiFetch('/api/services', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ raw: yaml, hash: servicesHash.value })
@@ -375,12 +418,12 @@ createApp({
       saving.value = true;
       try {
         const [svcRes, bmRes] = await Promise.all([
-          fetch('/api/services', {
+          apiFetch('/api/services', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ raw: buildYaml(), hash: servicesHash.value })
           }),
-          fetch('/api/bookmarks', {
+          apiFetch('/api/bookmarks', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ raw: buildBookmarkYaml(), hash: bookmarksHash.value })
@@ -545,7 +588,7 @@ createApp({
     async function saveBookmarks() {
       try {
         const yaml = buildBookmarkYaml();
-        const res = await fetch('/api/bookmarks', {
+        const res = await apiFetch('/api/bookmarks', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ raw: yaml, hash: bookmarksHash.value })
@@ -674,7 +717,7 @@ createApp({
     // Runtime settings
     async function loadSettings() {
       try {
-        const res = await fetch('/api/settings');
+        const res = await apiFetch('/api/settings');
         const json = await res.json();
         if (!json.success) throw new Error(json.error || '讀取設定失敗');
         previewUrl.value = json.data.previewUrl || '';
@@ -700,7 +743,7 @@ createApp({
 
     async function saveSettings() {
       try {
-        const res = await fetch('/api/settings', {
+        const res = await apiFetch('/api/settings', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ previewUrl: settingsForm.previewUrl })
@@ -769,7 +812,7 @@ createApp({
     // Backups
     async function loadBackups() {
       try {
-        const res = await fetch('/api/backups');
+        const res = await apiFetch('/api/backups');
         const json = await res.json();
         if (json.success) backups.value = json.backups;
         showBackups.value = true;
@@ -781,7 +824,7 @@ createApp({
     async function restoreBackup(filename) {
       if (!confirm('確定還原備份「' + filename + '」？目前的配置會被覆蓋。')) return;
       try {
-        const res = await fetch('/api/restore', {
+        const res = await apiFetch('/api/restore', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filename })
@@ -803,6 +846,7 @@ createApp({
 
     onMounted(() => {
       syncViewport();
+      loadAuthState();
       loadSettings();
       loadServices();
       loadBookmarks();
@@ -829,6 +873,7 @@ createApp({
       groups, bookmarkGroups, activeTab, showPreview, previewUrl, previewKey, saving,
       previewSrc, hasPreviewUrl, previewSourceLabel, runtimeInfo, settingsForm,
       bindSourceLabel,
+      apiPassword, showPasswordPrompt, passwordInput, authRequired,
       bindConfiguredSourceLabel,
       showGroupModal, showItemModal, showMoveModal, showBackups, showSettings,
       editingGroupId, editingItem, editingGroup,
@@ -840,6 +885,7 @@ createApp({
       onDragStart, onDragOver, onDrop, onDragEnd,
       togglePreview, togglePreviewCollapsed, refreshPreview, loadBackups, restoreBackup,
       loadSettings, openSettings, saveSettings,
+      loadAuthState, submitPassword,
       previewCollapsed, isColumn, isResizing, splitRatio, startResize, onResize, stopResize,
       editorPanelStyle, previewPanelStyle,
       widgetTypeLabel,
