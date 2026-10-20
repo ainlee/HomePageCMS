@@ -54,7 +54,7 @@ const cmsApp = createApp({
       port: '', portEffective: '', portSource: '',
       bindAddressEffective: '', bindAddressSource: '',
       placeholders: {}, fileValues: {},
-      protection: { enabled: false, source: 'none' },
+      protection: { enabled: false, source: 'none', stored: false },
       initialized: false,
       restartRequired: false
     });
@@ -769,6 +769,7 @@ const cmsApp = createApp({
         // No settings file yet: this is a first visit, so the setup dialog opens.
         if (!json.data.initialized && !showSettings.value) {
           isFirstRun.value = true;
+          showPassword.value = false;
           showSettings.value = true;
         }
       } catch (err) {
@@ -776,8 +777,9 @@ const cmsApp = createApp({
       }
     }
 
-    // The form shows what the user configured (fileValues) and the placeholder shows
-    // what applies when a field is left empty. The hint line shows what is in effect.
+    // The form shows the values that are in effect, so a field with a value never
+    // shows its placeholder. The placeholder is the fallback for a field the user
+    // clears, and the hint line underneath says where the value came from.
     function applySettings(data) {
       previewUrl.value = data.previewUrl || '';
       previewUrlSource.value = data.previewUrlSource || '';
@@ -796,20 +798,23 @@ const cmsApp = createApp({
       runtimeInfo.backupPathSource = data.backupPathSource || '';
       runtimeInfo.settingsPath = data.settingsPath || '';
       runtimeInfo.settingsPathSource = data.settingsPathSource || '';
-      runtimeInfo.protection = data.protection || { enabled: false, source: 'none' };
+      runtimeInfo.protection = data.protection || { enabled: false, source: 'none', stored: false };
       runtimeInfo.initialized = !!data.initialized;
 
-      const fileValues = data.fileValues || {};
-      settingsForm.previewUrl = fileValues.previewUrl || '';
-      settingsForm.bindAddress = fileValues.bindAddress || '';
-      settingsForm.port = fileValues.port || '';
-      settingsForm.configPath = fileValues.configPath || '';
-      settingsForm.backupPath = fileValues.backupPath || '';
-      settingsForm.settingsPath = fileValues.settingsPath || '';
+      settingsForm.previewUrl = data.previewUrl || '';
+      settingsForm.bindAddress = data.bindAddress || '';
+      settingsForm.port = data.port || '';
+      settingsForm.configPath = data.configPath || '';
+      settingsForm.backupPath = data.backupPath || '';
+      settingsForm.settingsPath = data.settingsPath || '';
       settingsForm.protectionEnabled = !!(data.protection && data.protection.enabled);
     }
 
     function openSettings() {
+      // The password is never shown by default, and that is not remembered between
+      // visits to the dialog.
+      showPassword.value = false;
+      settingsForm.password = '';
       showSettings.value = true;
     }
 

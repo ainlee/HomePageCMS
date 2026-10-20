@@ -381,7 +381,7 @@ body {
   transition: transform 0.2s;
 }
 
-.switch input:checked + .switch-slider { background: var(--accent); }
+.switch input:checked + .switch-slider { background: var(--success); }
 .switch input:checked + .switch-slider::before { transform: translateX(18px); }
 .switch input:disabled + .switch-slider { opacity: 0.45; cursor: not-allowed; }
 

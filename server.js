@@ -149,10 +149,12 @@ function portSetting() {
 function protectionSetting() {
   if (ENV_PASSWORD) return { enabled: true, source: 'env' };
   const p = readCmsSettings().protection;
-  if (p && typeof p === 'object' && p.enabled && p.salt && p.hash) {
+  const stored = !!(p && typeof p === 'object' && p.salt && p.hash);
+  if (stored && p.enabled) {
     return { enabled: true, source: 'settings-file', salt: p.salt, hash: p.hash };
   }
-  return { enabled: false, source: 'none' };
+  // The password can stay stored while the switch is off: it is simply not verified.
+  return { enabled: false, source: 'none', salt: stored ? p.salt : null, hash: stored ? p.hash : null };
 }
 
 function servicesFile() {
@@ -226,7 +228,12 @@ function settingsPayload() {
     backupPathSource: backup.source,
     settingsPath: settingsPath.value,
     settingsPathSource: settingsPath.source,
-    protection: { enabled: protection.enabled, source: protection.source },
+    protection: {
+      enabled: protection.enabled,
+      source: protection.source,
+      // A password can be stored even while the switch is off.
+      stored: !!(protection.salt && protection.hash)
+    },
     restartRequired: bind.value !== EFFECTIVE_BIND || String(port.value) !== String(EFFECTIVE_PORT),
     // What the user configured in the settings file, and what each field falls back
     // to when it is left empty. The form shows the first as the field value and the
@@ -509,12 +516,21 @@ app.put('/api/settings', (req, res) => {
         if (password) {
           const salt = makeSalt();
           next.protection = { enabled: true, salt, hash: hashPassword(password, salt) };
-        } else if (!next.protection || !next.protection.enabled || !next.protection.hash) {
+        } else if (!next.protection || !next.protection.hash) {
           return res.status(400).json({ success: false, error: '啟用存取保護時必須設定密碼' });
+        } else {
+          // No new password: the stored one stays, even if the switch was off before.
+          next.protection = { enabled: true, salt: next.protection.salt, hash: next.protection.hash };
         }
-        // No new password: the one that is already stored stays.
       } else {
-        delete next.protection;
+        // Turning protection off keeps the stored password: it is simply not
+        // verified while the switch is off, and turning it back on does not need a
+        // new one.
+        if (next.protection && next.protection.hash) {
+          next.protection = { enabled: false, salt: next.protection.salt, hash: next.protection.hash };
+        } else {
+          delete next.protection;
+        }
       }
     }
 
