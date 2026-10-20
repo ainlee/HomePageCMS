@@ -39,18 +39,31 @@ createApp({
     const apiPassword = ref(localStorage.getItem('hcms-password') || '');
     const showPasswordPrompt = ref(false);
     const passwordInput = ref('');
-    const authRequired = ref(false);
     const toast = reactive({ show: false, msg: '', type: 'success' });
 
     // Where the editor reads its config, where it writes backups, and where its own
     // settings live. Read-only, shown in the settings dialog so the operator can confirm
     // the deployment without reading the source.
     const runtimeInfo = reactive({
-      configPath: '', backupPath: '', settingsPath: '',
-      bindAddressEffective: '', bindAddressSource: '', bindAddressConfiguredSource: '',
+      configPath: '', configPathSource: '',
+      backupPath: '', backupPathSource: '',
+      settingsPath: '', settingsPathSource: '',
+      port: '', portEffective: '', portSource: '',
+      bindAddressEffective: '', bindAddressSource: '',
+      placeholders: {}, fileValues: {},
+      protection: { enabled: false, source: 'none' },
+      initialized: false,
       restartRequired: false
     });
-    const settingsForm = reactive({ previewUrl: '', bindAddress: '' });
+    const settingsForm = reactive({
+      previewUrl: '', bindAddress: '', port: '',
+      configPath: '', backupPath: '', settingsPath: '',
+      protectionEnabled: false, password: ''
+    });
+    const showPassword = ref(false);
+    // True while the editor has no settings file yet: the setup dialog opens on the
+    // first visit and stays until it is saved or explicitly skipped.
+    const isFirstRun = ref(false);
 
     const editingGroup = reactive({ name: '', colSpan: 1 });
     const editingItem = reactive({
@@ -73,16 +86,16 @@ createApp({
       'env': '環境變數 HOMEPAGE_PREVIEW_URL',
       'unset': '尚未設定'
     })[previewUrlSource.value] || '未知');
-    const bindSourceLabel = computed(() => ({
-      'settings-file': '編輯器設定檔',
-      'env': '環境變數 HOST',
-      'default': '內建預設值'
-    })[runtimeInfo.bindAddressSource] || '未知');
-    const bindConfiguredSourceLabel = computed(() => ({
-      'settings-file': '編輯器設定檔',
-      'env': '環境變數 HOST',
-      'default': '內建預設值'
-    })[runtimeInfo.bindAddressConfiguredSource] || '未知');
+    // Where a setting currently comes from, for the hint under each field.
+    function sourceLabel(source) {
+      return ({
+        'settings-file': '設定檔',
+        'env': '環境變數',
+        'default': '預設值',
+        'unset': '尚未設定',
+        'none': '未啟用'
+      })[source] || '未知';
+    }
 
     // Layout: the preview panel keeps a fixed flex-basis while the editor fills whatever
     // is left, so collapsing actually moves the divider instead of only hiding the iframe.
@@ -279,16 +292,6 @@ createApp({
       return res;
     }
 
-    async function loadAuthState() {
-      try {
-        const res = await fetch('/api/auth');
-        const json = await res.json();
-        authRequired.value = !!(json.data && json.data.required);
-      } catch (err) {
-        // The endpoint is optional; if it cannot be reached the editor still works.
-      }
-    }
-
     function submitPassword() {
       apiPassword.value = passwordInput.value;
       if (apiPassword.value) localStorage.setItem('hcms-password', apiPassword.value);
@@ -299,6 +302,13 @@ createApp({
       loadSettings();
       loadServices();
       loadBookmarks();
+    }
+
+    // The first visit opens the setup dialog. Skipping it leaves the editor without
+    // a settings file, so the dialog opens again on the next visit.
+    function skipSetup() {
+      isFirstRun.value = false;
+      showSettings.value = false;
     }
 
     function parseYamlData(data) {
@@ -720,24 +730,51 @@ createApp({
         const res = await apiFetch('/api/settings');
         const json = await res.json();
         if (!json.success) throw new Error(json.error || '讀取設定失敗');
-        previewUrl.value = json.data.previewUrl || '';
-        previewUrlSource.value = json.data.previewUrlSource || '';
-        runtimeInfo.bindAddressEffective = json.data.bindAddressEffective || '';
-        runtimeInfo.bindAddressSource = json.data.bindAddressSource || '';
-        runtimeInfo.bindAddressConfiguredSource = json.data.bindAddressConfiguredSource || '';
-        runtimeInfo.restartRequired = !!json.data.restartRequired;
-        runtimeInfo.configPath = json.data.configPath || '';
-        runtimeInfo.backupPath = json.data.backupPath || '';
-        runtimeInfo.settingsPath = json.data.settingsPath || '';
-        settingsForm.previewUrl = previewUrl.value;
-        settingsForm.bindAddress = json.data.bindAddress || '';
+        applySettings(json.data);
+        // No settings file yet: this is a first visit, so the setup dialog opens.
+        if (!json.data.initialized && !showSettings.value) {
+          isFirstRun.value = true;
+          showSettings.value = true;
+        }
       } catch (err) {
         showToast('讀取設定失敗: ' + err.message, 'error');
       }
     }
 
+    // The form shows what the user configured (fileValues) and the placeholder shows
+    // what applies when a field is left empty. The hint line shows what is in effect.
+    function applySettings(data) {
+      previewUrl.value = data.previewUrl || '';
+      previewUrlSource.value = data.previewUrlSource || '';
+
+      runtimeInfo.placeholders = data.placeholders || {};
+      runtimeInfo.fileValues = data.fileValues || {};
+      runtimeInfo.bindAddressEffective = data.bindAddressEffective || '';
+      runtimeInfo.bindAddressSource = data.bindAddressSource || '';
+      runtimeInfo.restartRequired = !!data.restartRequired;
+      runtimeInfo.port = data.port || '';
+      runtimeInfo.portEffective = data.portEffective || '';
+      runtimeInfo.portSource = data.portSource || '';
+      runtimeInfo.configPath = data.configPath || '';
+      runtimeInfo.configPathSource = data.configPathSource || '';
+      runtimeInfo.backupPath = data.backupPath || '';
+      runtimeInfo.backupPathSource = data.backupPathSource || '';
+      runtimeInfo.settingsPath = data.settingsPath || '';
+      runtimeInfo.settingsPathSource = data.settingsPathSource || '';
+      runtimeInfo.protection = data.protection || { enabled: false, source: 'none' };
+      runtimeInfo.initialized = !!data.initialized;
+
+      const fileValues = data.fileValues || {};
+      settingsForm.previewUrl = fileValues.previewUrl || '';
+      settingsForm.bindAddress = fileValues.bindAddress || '';
+      settingsForm.port = fileValues.port || '';
+      settingsForm.configPath = fileValues.configPath || '';
+      settingsForm.backupPath = fileValues.backupPath || '';
+      settingsForm.settingsPath = fileValues.settingsPath || '';
+      settingsForm.protectionEnabled = !!(data.protection && data.protection.enabled);
+    }
+
     function openSettings() {
-      settingsForm.previewUrl = previewUrl.value;
       showSettings.value = true;
     }
 
@@ -746,26 +783,30 @@ createApp({
         const res = await apiFetch('/api/settings', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ previewUrl: settingsForm.previewUrl })
+          body: JSON.stringify({
+            previewUrl: settingsForm.previewUrl,
+            bindAddress: settingsForm.bindAddress,
+            port: settingsForm.port,
+            configPath: settingsForm.configPath,
+            backupPath: settingsForm.backupPath,
+            settingsPath: settingsForm.settingsPath,
+            protection: { enabled: settingsForm.protectionEnabled, password: settingsForm.password }
+          })
         });
         const json = await res.json();
         if (!json.success) {
           showToast('儲存失敗: ' + (json.error || '未知錯誤'), 'error');
           return;
         }
-        previewUrl.value = json.data.previewUrl || '';
-        previewUrlSource.value = json.data.previewUrlSource || '';
-        runtimeInfo.bindAddressEffective = json.data.bindAddressEffective || '';
-        runtimeInfo.bindAddressSource = json.data.bindAddressSource || '';
-        runtimeInfo.bindAddressConfiguredSource = json.data.bindAddressConfiguredSource || '';
-        runtimeInfo.restartRequired = !!json.data.restartRequired;
-        runtimeInfo.configPath = json.data.configPath || '';
-        runtimeInfo.backupPath = json.data.backupPath || '';
-        runtimeInfo.settingsPath = json.data.settingsPath || '';
-        settingsForm.bindAddress = json.data.bindAddress || '';
+        applySettings(json.data);
+        settingsForm.password = '';
         showSettings.value = false;
+        isFirstRun.value = false;
         showToast('已儲存設定');
         refreshPreview();
+        // The config directory may have changed, so the services are read again.
+        loadServices();
+        loadBookmarks();
       } catch (err) {
         showToast('儲存失敗: ' + err.message, 'error');
       }
@@ -846,7 +887,6 @@ createApp({
 
     onMounted(() => {
       syncViewport();
-      loadAuthState();
       loadSettings();
       loadServices();
       loadBookmarks();
@@ -872,9 +912,8 @@ createApp({
     return {
       groups, bookmarkGroups, activeTab, showPreview, previewUrl, previewKey, saving,
       previewSrc, hasPreviewUrl, previewSourceLabel, runtimeInfo, settingsForm,
-      bindSourceLabel,
-      apiPassword, showPasswordPrompt, passwordInput, authRequired,
-      bindConfiguredSourceLabel,
+      sourceLabel, showPassword, isFirstRun,
+      apiPassword, showPasswordPrompt, passwordInput,
       showGroupModal, showItemModal, showMoveModal, showBackups, showSettings,
       editingGroupId, editingItem, editingGroup,
       movingItem, movingFromGroup, dragOverGroup, backups, toast,
@@ -884,8 +923,7 @@ createApp({
       moveItemToGroup, confirmMove,
       onDragStart, onDragOver, onDrop, onDragEnd,
       togglePreview, togglePreviewCollapsed, refreshPreview, loadBackups, restoreBackup,
-      loadSettings, openSettings, saveSettings,
-      loadAuthState, submitPassword,
+      loadSettings, openSettings, saveSettings, skipSetup, submitPassword,
       previewCollapsed, isColumn, isResizing, splitRatio, startResize, onResize, stopResize,
       editorPanelStyle, previewPanelStyle,
       widgetTypeLabel,

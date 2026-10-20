@@ -14,7 +14,7 @@
         <h1><i class="mdi mdi-view-dashboard-edit"></i> Homepage 編輯器</h1>
       </div>
       <div class="topbar-right">
-        <button @click="openSettings" class="btn btn-icon btn-secondary" title="執行期設定">
+        <button @click="openSettings" class="btn btn-icon btn-secondary" title="設定">
           <i class="mdi mdi-cog"></i>
         </button>
         <button @click="togglePreview" class="btn btn-secondary">
@@ -304,23 +304,22 @@
     </div>
 
     <!-- Settings Modal -->
-    <div v-if="showSettings" class="modal-overlay" @click.self="showSettings = false">
-      <div class="modal">
-        <h2><i class="mdi mdi-cog"></i> 執行期設定</h2>
+    <div v-if="showSettings" class="modal-overlay" @click.self="!isFirstRun && (showSettings = false)">
+      <div class="modal modal-wide">
+        <h2><i class="mdi mdi-cog"></i> 設定</h2>
+        <p v-if="isFirstRun" class="field-hint setup-intro">
+          第一次使用，先把下面幾項填好就能開始編輯。留空的欄位會使用預設值。
+        </p>
         <div class="form-group">
-          <label>Homepage 預覽網址</label>
-          <input v-model="settingsForm.previewUrl" type="text" placeholder="https://home.example.com">
-          <p class="field-hint">目前來源：{{ previewSourceLabel }}</p>
+          <label>Homepage 訪問網址</label>
+          <input v-model="settingsForm.previewUrl" type="text" :placeholder="runtimeInfo.placeholders.previewUrl">
+          <p class="field-hint">目前生效：{{ previewUrl || '尚未設定' }}（來源：{{ previewSourceLabel }}）</p>
         </div>
         <div class="form-group">
           <label>監聽位址</label>
-          <input v-model="settingsForm.bindAddress" type="text" placeholder="0.0.0.0">
+          <input v-model="settingsForm.bindAddress" type="text" :placeholder="runtimeInfo.placeholders.bindAddress">
           <p class="field-hint">
-            目前生效：{{ runtimeInfo.bindAddressEffective }}（來源：{{ bindSourceLabel }}）
-          </p>
-          <p v-if="runtimeInfo.restartRequired" class="field-hint">
-            設定檔的值為 {{ settingsForm.bindAddress }}（來源：{{ bindConfiguredSourceLabel }}），
-            重新啟動後才會生效。
+            目前生效：{{ runtimeInfo.bindAddressEffective }}（來源：{{ sourceLabel(runtimeInfo.bindAddressSource) }}）
           </p>
           <p class="field-warning">
             <i class="mdi mdi-alert-outline"></i>
@@ -329,26 +328,67 @@
           </p>
         </div>
         <div class="form-group">
-          <label>設定檔位置</label>
-          <p class="path-value">{{ runtimeInfo.configPath }}</p>
+          <label>連接埠</label>
+          <input v-model="settingsForm.port" type="text" :placeholder="runtimeInfo.placeholders.port">
+          <p class="field-hint">
+            目前生效：{{ runtimeInfo.portEffective }}（來源：{{ sourceLabel(runtimeInfo.portSource) }}）
+          </p>
+        </div>
+        <div class="form-group">
+          <label>Homepage 設定檔位置</label>
+          <input v-model="settingsForm.configPath" type="text" :placeholder="runtimeInfo.placeholders.configPath">
+          <p class="field-hint">
+            目前生效：{{ runtimeInfo.configPath }}（來源：{{ sourceLabel(runtimeInfo.configPathSource) }}）
+          </p>
         </div>
         <div class="form-group">
           <label>備份位置</label>
-          <p class="path-value">{{ runtimeInfo.backupPath }}</p>
+          <input v-model="settingsForm.backupPath" type="text" :placeholder="runtimeInfo.placeholders.backupPath">
+          <p class="field-hint">
+            目前生效：{{ runtimeInfo.backupPath }}（來源：{{ sourceLabel(runtimeInfo.backupPathSource) }}）
+          </p>
         </div>
         <div class="form-group">
-          <label>編輯器設定檔</label>
-          <p class="path-value">{{ runtimeInfo.settingsPath }}</p>
+          <label>編輯器設定檔位置</label>
+          <input v-model="settingsForm.settingsPath" type="text" :placeholder="runtimeInfo.placeholders.settingsPath">
+          <p class="field-hint">
+            目前生效：{{ runtimeInfo.settingsPath }}（來源：{{ sourceLabel(runtimeInfo.settingsPathSource) }}）
+          </p>
         </div>
         <div class="form-group">
           <label>存取保護</label>
+          <div class="password-row">
+            <input v-model="settingsForm.password" :type="showPassword ? 'text' : 'password'"
+                   placeholder="留空表示不變更" :disabled="runtimeInfo.protection.source === 'env'">
+            <button type="button" class="btn btn-icon" @click="showPassword = !showPassword"
+                    :title="showPassword ? '隱藏密碼' : '顯示密碼'">
+              <i class="mdi" :class="showPassword ? 'mdi-eye-off' : 'mdi-eye'"></i>
+            </button>
+            <label class="switch" title="開啟後，所有寫入都需要密碼">
+              <input type="checkbox" v-model="settingsForm.protectionEnabled"
+                     :disabled="runtimeInfo.protection.source === 'env'">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
           <p class="field-hint">
-            <template v-if="authRequired">已啟用（密碼由環境變數 HOMEPAGE_CMS_PASSWORD 設定）</template>
-            <template v-else>未啟用——任何能連到這台機器的人都能編輯你的設定</template>
+            <template v-if="runtimeInfo.protection.source === 'env'">
+              已啟用（密碼由環境變數 HOMEPAGE_CMS_PASSWORD 設定）
+            </template>
+            <template v-else-if="runtimeInfo.protection.enabled">
+              已啟用。密碼以雜湊儲存；要更換密碼請在上面的欄位輸入新密碼後儲存。
+            </template>
+            <template v-else>
+              未啟用——任何能連到這台機器的人都能編輯你的設定。
+            </template>
           </p>
         </div>
+        <p v-if="runtimeInfo.restartRequired" class="field-warning">
+          <i class="mdi mdi-alert-outline"></i>
+          監聽位址或連接埠的變更需要重新啟動編輯器才會生效。
+        </p>
         <div class="modal-actions">
-          <button @click="showSettings = false" class="btn btn-secondary">取消</button>
+          <button v-if="!isFirstRun" @click="showSettings = false" class="btn btn-secondary">取消</button>
+          <button v-else @click="skipSetup" class="btn btn-secondary">稍後再設定</button>
           <button @click="saveSettings" class="btn btn-primary">儲存</button>
         </div>
       </div>
