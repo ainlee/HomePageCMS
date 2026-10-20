@@ -191,7 +191,7 @@ await cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: idKb },
 // ===== D. rotation / resize re-measures =====
 // Fresh load without the stubbed visualViewport, so the real measurement path runs.
 await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }, sessionId);
-await cdp.send('Page.navigate', { url: 'http://localhost:3456' }, sessionId);
+await cdp.send('Page.navigate', { url: APP_URL }, sessionId);
 for (let i = 0; i < 120; i++) { if (await ev(`!!(document.querySelector('#app') && document.querySelector('#app').__vue_app__)`)) break; await sleep(150); }
 await sleep(600);
 await cdp.send('Emulation.setDeviceMetricsOverride', { width: 844, height: 390, deviceScaleFactor: 1, mobile: true }, sessionId);

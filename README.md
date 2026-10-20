@@ -36,10 +36,10 @@ Windows 使用者也可以直接執行 `start-editor.bat`。
 | 環境變數 | 預設值 | 說明 |
 | --- | --- | --- |
 | `PORT` | `3456` | 編輯器的連接埠 |
-| `HOST` | `0.0.0.0` | 編輯器綁定的位址 |
+| `HOST` | `0.0.0.0` | 編輯器綁定的位址；也可在介面上設定 |
 | `HOMEPAGE_CONFIG_PATH` | `<專案>/config` | Homepage 設定檔（`services.yaml`、`bookmarks.yaml`）所在目錄 |
 | `HOMEPAGE_BACKUP_PATH` | `<專案>/backups` | 備份目錄 |
-| `HOMEPAGE_CMS_SETTINGS` | `<設定檔目錄>/.homepage-cms.yaml` | 編輯器自身的設定檔 |
+| `HOMEPAGE_CMS_SETTINGS` | `<專案>/cms-settings.yaml` | 編輯器自身的設定檔 |
 | `HOMEPAGE_PREVIEW_URL` | 無 | 預覽目標網址；未設定時需於介面設定 |
 
 例如把設定指到 NAS 共用資料夾、備份指到掛載點、換一個連接埠：
@@ -53,6 +53,10 @@ PORT=3899 npm start
 注意 `HOMEPAGE_` 開頭的變數屬於 Homepage 自己的命名空間（例如
 `HOMEPAGE_ALLOWED_HOSTS`），編輯器專用的那幾個是另一組，別搞混。
 
+編輯器自身的設定檔放在**編輯器的目錄**，不放進 Homepage 的設定目錄——那個目錄是
+Homepage 的（常是容器掛載點或 NAS 共用資料夾），不是編輯器的。舊版把設定放在
+`<設定檔目錄>/.homepage-cms.yaml`，新版本首次啟動會自動搬到新位置。
+
 ### 預覽目標
 
 預覽面板載入哪個 Homepage 由執行期設定決定，決定順序是
@@ -64,6 +68,16 @@ PORT=3899 npm start
 
 預覽網址是**瀏覽器**要能開到的位址。Homepage 若跑在容器內網，請填使用者瀏覽器
 打得開的網址，而不是容器內部的主機名稱。
+
+### 監聽位址
+
+編輯器預設綁 `0.0.0.0`，也就是所有介面都可以連進來——家用或區網環境通常正是
+你要的。齒輪按鈕裡可以改成 `127.0.0.1` 只留本機，或填指定的介面位址；改完要
+重新啟動才會生效，介面會標示出來。
+
+> 綁 `0.0.0.0` 代表**任何能連到這台機器的人都能開啟編輯器並改寫你的 Homepage
+> 設定**（編輯器沒有內建帳號密碼）。請只在信任的網路使用；要對外開放請設定
+> `HOMEPAGE_CMS_PASSWORD`。
 
 ## 設定檔格式
 

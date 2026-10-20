@@ -2,6 +2,7 @@ const express = require('express');
 const yaml = require('js-yaml');
 const fs = require('fs');
 const path = require('path');
+const net = require('net');
 
 const app = express();
 const PORT = process.env.PORT || 3456;
@@ -9,12 +10,15 @@ const PORT = process.env.PORT || 3456;
 // Everything the editor needs to know about its environment comes from environment
 // variables. The defaults are relative to the project directory, so a fresh clone works
 // with no setup, and nothing here is tied to one particular deployment.
-const HOST = process.env.HOST || '0.0.0.0';
+const ENV_BIND_ADDRESS = (process.env.HOST || '').trim();
+const DEFAULT_BIND_ADDRESS = '0.0.0.0';
 const CONFIG_PATH = process.env.HOMEPAGE_CONFIG_PATH || path.join(__dirname, 'config');
 const BACKUP_DIR = process.env.HOMEPAGE_BACKUP_PATH || path.join(__dirname, 'backups');
-// The editor's own settings (currently just the preview target) live in a YAML file next
-// to the Homepage config, following the same "settings are files on disk" convention.
-const SETTINGS_FILE = process.env.HOMEPAGE_CMS_SETTINGS || path.join(CONFIG_PATH, '.homepage-cms.yaml');
+// The editor's own settings live in the editor's directory, not in the Homepage config
+// directory: that directory belongs to Homepage (often a container mount or a shared
+// NAS folder), and the editor's settings are not part of it.
+const SETTINGS_FILE = process.env.HOMEPAGE_CMS_SETTINGS || path.join(__dirname, 'cms-settings.yaml');
+const LEGACY_SETTINGS_FILE = path.join(CONFIG_PATH, '.homepage-cms.yaml');
 const SERVICES_FILE = path.join(CONFIG_PATH, 'services.yaml');
 const BOOKMARKS_FILE = path.join(CONFIG_PATH, 'bookmarks.yaml');
 
@@ -38,6 +42,23 @@ function readCmsSettings() {
   }
 }
 
+// Older installs kept the editor's settings inside the Homepage config directory. Move
+// them to the editor's own directory so that directory holds Homepage's files only.
+function migrateLegacySettings() {
+  if (fs.existsSync(SETTINGS_FILE)) return;
+  if (!fs.existsSync(LEGACY_SETTINGS_FILE)) return;
+  if (path.resolve(LEGACY_SETTINGS_FILE) === path.resolve(SETTINGS_FILE)) return;
+  try {
+    fs.copyFileSync(LEGACY_SETTINGS_FILE, SETTINGS_FILE);
+    fs.unlinkSync(LEGACY_SETTINGS_FILE);
+    console.log(`Moved editor settings from ${LEGACY_SETTINGS_FILE} to ${SETTINGS_FILE}`);
+  } catch (err) {
+    console.warn(`Could not move ${LEGACY_SETTINGS_FILE}: ${err.message}`);
+  }
+}
+
+migrateLegacySettings();
+
 // Precedence: settings file > HOMEPAGE_PREVIEW_URL > nothing. There is no built-in
 // default: a fresh install has no Homepage to point at, and guessing one would show an
 // unrelated error page in the preview. The source is reported back so the UI can tell
@@ -52,11 +73,40 @@ function resolvePreviewUrl() {
   return { previewUrl: '', source: 'unset' };
 }
 
+// The address the editor listens on. Opening it up beyond localhost means anyone who
+// can reach it can rewrite the Homepage config, so the UI shows that next to the option.
+function resolveBindAddress() {
+  const fromFile = readCmsSettings().bindAddress;
+  if (typeof fromFile === 'string' && fromFile.trim()) {
+    return { bindAddress: fromFile.trim(), source: 'settings-file' };
+  }
+  if (ENV_BIND_ADDRESS) return { bindAddress: ENV_BIND_ADDRESS, source: 'env' };
+  return { bindAddress: DEFAULT_BIND_ADDRESS, source: 'default' };
+}
+
+function isValidBindAddress(value) {
+  if (net.isIP(value)) return true;
+  // A hostname, e.g. "localhost" or "cms.lan".
+  return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test(value);
+}
+
+// What the server is actually bound to right now. A change to the bind address only
+// takes effect after a restart, so the UI needs both numbers.
+const EFFECTIVE_BIND = resolveBindAddress();
+const EFFECTIVE_BIND_ADDRESS = EFFECTIVE_BIND.bindAddress;
+const EFFECTIVE_BIND_SOURCE = EFFECTIVE_BIND.source;
+
 function settingsPayload() {
   const { previewUrl, source } = resolvePreviewUrl();
+  const configured = resolveBindAddress();
   return {
     previewUrl,
     previewUrlSource: source,
+    bindAddress: configured.bindAddress,
+    bindAddressConfiguredSource: configured.source,
+    bindAddressSource: EFFECTIVE_BIND_SOURCE,
+    bindAddressEffective: EFFECTIVE_BIND_ADDRESS,
+    restartRequired: configured.bindAddress !== EFFECTIVE_BIND_ADDRESS,
     configPath: CONFIG_PATH,
     backupPath: BACKUP_DIR,
     settingsPath: SETTINGS_FILE
@@ -152,20 +202,41 @@ app.get('/api/settings', (req, res) => {
 // PUT /api/settings - store the preview target in the editor's settings file
 app.put('/api/settings', (req, res) => {
   try {
-    const value = typeof req.body?.previewUrl === 'string' ? req.body.previewUrl.trim() : '';
-    if (value) {
-      let parsed;
-      try {
-        parsed = new URL(value);
-      } catch {
-        return res.status(400).json({ success: false, error: '預覽網址格式不正確' });
-      }
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return res.status(400).json({ success: false, error: '預覽網址必須以 http:// 或 https:// 開頭' });
+    const next = { ...readCmsSettings() };
+
+    if (typeof req.body?.previewUrl === 'string') {
+      const value = req.body.previewUrl.trim();
+      if (value) {
+        let parsed;
+        try {
+          parsed = new URL(value);
+        } catch {
+          return res.status(400).json({ success: false, error: '預覽網址格式不正確' });
+        }
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          return res.status(400).json({ success: false, error: '預覽網址必須以 http:// 或 https:// 開頭' });
+        }
+        next.previewUrl = value;
+      } else {
+        // An empty value clears the setting, so the env var (or the unset state) applies.
+        delete next.previewUrl;
       }
     }
+
+    if (typeof req.body?.bindAddress === 'string') {
+      const value = req.body.bindAddress.trim();
+      if (value) {
+        if (!isValidBindAddress(value)) {
+          return res.status(400).json({ success: false, error: '監聽位址格式不正確' });
+        }
+        next.bindAddress = value;
+      } else {
+        delete next.bindAddress;
+      }
+    }
+
     copyBackup(SETTINGS_FILE, 'settings');
-    fs.writeFileSync(SETTINGS_FILE, yaml.dump({ previewUrl: value }), 'utf8');
+    fs.writeFileSync(SETTINGS_FILE, yaml.dump(next), 'utf8');
     res.json({ success: true, data: settingsPayload() });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -214,9 +285,10 @@ app.post('/api/restore', (req, res) => {
   }
 });
 
-app.listen(PORT, HOST, () => {
+app.listen(PORT, EFFECTIVE_BIND_ADDRESS, () => {
   const { previewUrl, source } = resolvePreviewUrl();
   console.log(`Homepage Editor running at http://localhost:${PORT}`);
+  console.log(`Listening on: ${EFFECTIVE_BIND_ADDRESS}`);
   console.log(`Config path: ${CONFIG_PATH}`);
   console.log(`Backup path: ${BACKUP_DIR}`);
   console.log(`Settings file: ${SETTINGS_FILE}`);

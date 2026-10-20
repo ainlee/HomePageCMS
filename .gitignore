@@ -6,8 +6,9 @@ node_modules/
 # covers them.
 backups/
 
-# The editor's own settings (the preview target). Like the Homepage config below, it
-# describes one machine, so it stays out of version control.
+# The editor's own settings (preview target, bind address). Like the Homepage config
+# below, it describes one machine, so it stays out of version control.
+cms-settings.yaml
 .homepage-cms.yaml
 
 # Your own homepage configuration. It lists internal hosts, container names and

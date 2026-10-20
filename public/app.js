@@ -35,8 +35,12 @@ createApp({
     // Where the editor reads its config, where it writes backups, and where its own
     // settings live. Read-only, shown in the settings dialog so the operator can confirm
     // the deployment without reading the source.
-    const runtimeInfo = reactive({ configPath: '', backupPath: '', settingsPath: '' });
-    const settingsForm = reactive({ previewUrl: '' });
+    const runtimeInfo = reactive({
+      configPath: '', backupPath: '', settingsPath: '',
+      bindAddressEffective: '', bindAddressSource: '', bindAddressConfiguredSource: '',
+      restartRequired: false
+    });
+    const settingsForm = reactive({ previewUrl: '', bindAddress: '' });
 
     const editingGroup = reactive({ name: '', colSpan: 1 });
     const editingItem = reactive({
@@ -59,6 +63,16 @@ createApp({
       'env': '環境變數 HOMEPAGE_PREVIEW_URL',
       'unset': '尚未設定'
     })[previewUrlSource.value] || '未知');
+    const bindSourceLabel = computed(() => ({
+      'settings-file': '編輯器設定檔',
+      'env': '環境變數 HOST',
+      'default': '內建預設值'
+    })[runtimeInfo.bindAddressSource] || '未知');
+    const bindConfiguredSourceLabel = computed(() => ({
+      'settings-file': '編輯器設定檔',
+      'env': '環境變數 HOST',
+      'default': '內建預設值'
+    })[runtimeInfo.bindAddressConfiguredSource] || '未知');
 
     // Layout: the preview panel keeps a fixed flex-basis while the editor fills whatever
     // is left, so collapsing actually moves the divider instead of only hiding the iframe.
@@ -559,10 +573,15 @@ createApp({
         if (!json.success) throw new Error(json.error || '讀取設定失敗');
         previewUrl.value = json.data.previewUrl || '';
         previewUrlSource.value = json.data.previewUrlSource || '';
+        runtimeInfo.bindAddressEffective = json.data.bindAddressEffective || '';
+        runtimeInfo.bindAddressSource = json.data.bindAddressSource || '';
+        runtimeInfo.bindAddressConfiguredSource = json.data.bindAddressConfiguredSource || '';
+        runtimeInfo.restartRequired = !!json.data.restartRequired;
         runtimeInfo.configPath = json.data.configPath || '';
         runtimeInfo.backupPath = json.data.backupPath || '';
         runtimeInfo.settingsPath = json.data.settingsPath || '';
         settingsForm.previewUrl = previewUrl.value;
+        settingsForm.bindAddress = json.data.bindAddress || '';
       } catch (err) {
         showToast('讀取設定失敗: ' + err.message, 'error');
       }
@@ -587,9 +606,14 @@ createApp({
         }
         previewUrl.value = json.data.previewUrl || '';
         previewUrlSource.value = json.data.previewUrlSource || '';
+        runtimeInfo.bindAddressEffective = json.data.bindAddressEffective || '';
+        runtimeInfo.bindAddressSource = json.data.bindAddressSource || '';
+        runtimeInfo.bindAddressConfiguredSource = json.data.bindAddressConfiguredSource || '';
+        runtimeInfo.restartRequired = !!json.data.restartRequired;
         runtimeInfo.configPath = json.data.configPath || '';
         runtimeInfo.backupPath = json.data.backupPath || '';
         runtimeInfo.settingsPath = json.data.settingsPath || '';
+        settingsForm.bindAddress = json.data.bindAddress || '';
         showSettings.value = false;
         showToast('已儲存設定');
         refreshPreview();
@@ -698,6 +722,8 @@ createApp({
     return {
       groups, bookmarkGroups, activeTab, showPreview, previewUrl, previewKey, saving,
       previewSrc, hasPreviewUrl, previewSourceLabel, runtimeInfo, settingsForm,
+      bindSourceLabel,
+      bindConfiguredSourceLabel,
       showGroupModal, showItemModal, showMoveModal, showBackups, showSettings,
       editingGroupId, editingItem, editingGroup,
       movingItem, movingFromGroup, dragOverGroup, backups, toast,

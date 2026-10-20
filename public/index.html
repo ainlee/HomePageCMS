@@ -313,6 +313,22 @@
           <p class="field-hint">目前來源：{{ previewSourceLabel }}</p>
         </div>
         <div class="form-group">
+          <label>監聽位址</label>
+          <input v-model="settingsForm.bindAddress" type="text" placeholder="0.0.0.0">
+          <p class="field-hint">
+            目前生效：{{ runtimeInfo.bindAddressEffective }}（來源：{{ bindSourceLabel }}）
+          </p>
+          <p v-if="runtimeInfo.restartRequired" class="field-hint">
+            設定檔的值為 {{ settingsForm.bindAddress }}（來源：{{ bindConfiguredSourceLabel }}），
+            重新啟動後才會生效。
+          </p>
+          <p class="field-warning">
+            <i class="mdi mdi-alert-outline"></i>
+            綁定 0.0.0.0 等同對所有介面開放：任何能連到這台機器的人都能開啟編輯器、
+            改寫你的 Homepage 設定。請只在信任的網路使用，或設定存取密碼。
+          </p>
+        </div>
+        <div class="form-group">
           <label>設定檔位置</label>
           <p class="path-value">{{ runtimeInfo.configPath }}</p>
         </div>

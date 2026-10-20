@@ -279,6 +279,19 @@ body {
   color: var(--text-dim);
 }
 
+/* Risk note next to an option that can expose the editor to the network. */
+.field-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--danger);
+}
+
+.field-warning i { flex-shrink: 0; margin-top: 1px; }
+
 .path-value {
   padding: 8px 10px;
   background: var(--bg);

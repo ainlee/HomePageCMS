@@ -13,16 +13,20 @@ npm start          # http://localhost:3456
 
 ```
 PORT                    編輯器連接埠（預設 3456）
-HOST                    綁定位址（預設 0.0.0.0）
+HOST                    綁定位址（預設 0.0.0.0，也可寫在 cms-settings.yaml 的 bindAddress）
 HOMEPAGE_CONFIG_PATH    Homepage 設定檔目錄（預設 config/）
 HOMEPAGE_BACKUP_PATH    備份目錄（預設 backups/）
-HOMEPAGE_CMS_SETTINGS   編輯器自身設定檔（預設 <設定檔目錄>/.homepage-cms.yaml）
+HOMEPAGE_CMS_SETTINGS   編輯器自身設定檔（預設 <專案>/cms-settings.yaml）
 HOMEPAGE_PREVIEW_URL    預覽目標（未設定時於介面設定）
 ```
 
 首次啟動且設定檔不存在時，會由 `config/*.example.yaml` 建立初始設定。範例檔是
 唯一該進版控的設定內容，實際設定檔不進版控。預覽網址可在介面的齒輪按鈕修改，
 寫入編輯器設定檔。
+
+編輯器自己的設定檔放在**編輯器目錄**，不要放進 Homepage 的設定目錄——那個目錄是
+Homepage 的（常是容器掛載點或 NAS 共用資料夾）。舊版的
+`<設定檔目錄>/.homepage-cms.yaml` 在首次啟動時會自動搬遷到新位置。
 
 ## 測試
 
