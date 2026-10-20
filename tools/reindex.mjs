@@ -17,7 +17,7 @@
 // wipes the old vectors (they would be in a different vector space); running with the
 // same model keeps them, and only changed files are re-embedded.
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const args = process.argv.slice(2);
@@ -31,6 +31,48 @@ const MODEL = arg('model', process.env.GITNEXUS_EMBEDDING_MODEL || 'qwen3-embedd
 const PROBE = arg('probe', '折疊預覽面板');
 const FORCE = args.includes('--force');
 const ALWAYS_DROP = args.includes('--drop-embeddings');
+
+// The search extensions are shared libraries that link against OpenSSL 3
+// (libcrypto-3-x64.dll, libssl-3-x64.dll). Windows resolves those by the PATH of
+// the loading process, so a terminal without them cannot load the extensions - and
+// the analyzer then quietly produces an index with no keyword search. Git for
+// Windows ships OpenSSL 3, so its directory is added when the libraries are not
+// already reachable.
+function addOpenSslToPath() {
+  const candidates = [
+    'C:\\Program Files\\Git\\mingw64\\bin',
+    'C:\\Program Files\\Git\\mingw64\\libexec\\git-core'
+  ];
+  for (const dir of (process.env.PATH || '').split(';')) {
+    if (dir) candidates.push(dir);
+  }
+  for (const dir of candidates) {
+    if (!dir) continue;
+    if (existsSync(join(dir, 'libcrypto-3-x64.dll')) && existsSync(join(dir, 'libssl-3-x64.dll'))) {
+      const current = (process.env.PATH || '').split(';');
+      if (!current.includes(dir)) {
+        process.env.PATH = dir + ';' + (process.env.PATH || '');
+        console.log('Added OpenSSL 3 to PATH for the search extensions: ' + dir);
+      }
+      return;
+    }
+  }
+  console.warn('Could not find OpenSSL 3 (libcrypto-3-x64.dll / libssl-3-x64.dll).');
+  console.warn('The search extensions will not load without it, and the index will have no keyword search.');
+}
+
+addOpenSslToPath();
+
+// A probe mode that checks the endpoint and the search extensions without touching
+// the index, so both can be verified in isolation.
+if (args.includes('--probe')) {
+  const { execFileSync } = await import('node:child_process');
+  const doctor = execFileSync('gitnexus.cmd', ['doctor'], { encoding: 'utf8', shell: true });
+  const flat = doctor.split(/\s+/).join(' ');
+  console.log('FTS=' + flat.includes('Full-text search: available') +
+    '  VECTOR=' + flat.includes('VECTOR extension: available'));
+  process.exit(0);
+}
 
 // Ask the endpoint how wide its vectors are, so the index schema is created at the
 // right width. A mismatch forces a full rebuild on every later run.
