@@ -13,6 +13,11 @@ Homepage 用 YAML 描述你的服務與書籤，首頁本身很單純，但要�
 - **服務與書籤分頁** — 服務分組支援拖曳排序、跨分組移動、欄位寬度 (col-span)。
 - **狀態小工具** — 每個服務可設定 Docker 容器、遠端 ICMP ping 或自訂 HTTP API 的狀態追蹤。
 - **自動備份** — 每次儲存都會在 `backups/` 留下時間戳快照，可隨時還原。
+- **首次設定精靈** — 第一次打開跳出設定視窗，把訪問網址、監聽位址、連接埠、
+  檔案位置一次填好；之後不再打擾。
+- **存檔不傷原檔** — 只改動你動過的欄位，編輯器不認得的欄位原樣保留。
+- **可選的存取保護** — 一道共用密碼就能鎖住編輯器，密碼以雜湊儲存。
+- **設定隨部署走** — 環境變數或設定檔決定路徑與位址，不寫死在程式碼裡。
 - **行動版可用** — 版面依可見範圍而非瀏覽器視窗高度計算，手機上底部內容不會掉出畫面。
 
 ## 快速開始
@@ -27,12 +32,19 @@ npm start
 開啟 <http://localhost:3456>。若尚未有設定檔，程式會自動從 `config/*.example.yaml` 建立一份可直接編輯的範例。
 
 Windows 使用者也可以直接執行 `start-editor.bat`（它會用 `0.0.0.0:3899` 啟動，方便
-區網內的裝置連進來，並在視窗中提示對外開放的風險）。要改設定檔位置等屬於自己
-機器的值，寫在同目錄的 `start-editor.local.bat`（不進版控）即可：
+區網內的裝置連進來，並在視窗中提示對外開放的風險）。啟動後會等伺服器準備好，
+自動開啟預設瀏覽器到編輯器頁面；不想自動開啟就在本機專屬檔案裡設
+`OPEN_BROWSER=0`。
+
+要改設定檔位置等屬於自己機器的值，寫在同目錄的 `start-editor.local.bat`
+（不進版控）即可：
 
 ```bat
 set "HOMEPAGE_CONFIG_PATH=\\nas\share\homepage"
 ```
+
+> `start-editor.local.bat` 請用純 ASCII 內容。cmd 讀到含多位元組字元（中文）的
+> 批次檔時會錯位執行，把一行拆成兩半。
 
 ### 首次啟動
 
@@ -156,6 +168,7 @@ Homepage 官方預設的連接埠是 3000，所以欄位留空時提示的就是
 
 | Method | Path | 說明 |
 | --- | --- | --- |
+| GET | `/api/auth` | 回報是否需要存取密碼（這個端點不需要認證） |
 | GET | `/api/services` | 讀取 services.yaml |
 | PUT | `/api/services` | 寫入 services.yaml（自動備份） |
 | GET | `/api/bookmarks` | 讀取 bookmarks.yaml |
@@ -164,6 +177,9 @@ Homepage 官方預設的連接埠是 3000，所以欄位留空時提示的就是
 | POST | `/api/restore` | 還原指定備份 |
 | GET | `/api/settings` | 讀取全部執行期設定、其來源與各路徑 |
 | PUT | `/api/settings` | 寫入執行期設定（自動備份） |
+
+寫入時會附上讀取時的檔案雜湊；若設定檔在你編輯期間被其他程式改過，伺服器會以
+409 拒絕該次寫入並請你重新載入，避免蓋掉那些變更。
 
 ## 測試
 
@@ -190,15 +206,20 @@ Chrome 路徑可用 `CHROME_PATH` 覆寫，編輯器網址可用 `APP_URL` 覆�
 
 ```
 public/          前端（index.html、app.js、style.css）
-config/          設定檔與範例檔
+config/          Homepage 設定檔與範例檔
 backups/         執行時產生的備份（已忽略）
+openspec/        規格（specs/）與變更提案（changes/）
 tests/           無頭 Chrome 版面測試
+tools/           本機工具（語意搜尋索引）
 server.js        Express API 與靜態檔服務
+start-editor.bat Windows 啟動腳本（會讀取 start-editor.local.bat）
+open-browser.bat 啟動後自動開啟瀏覽器的小幫手
 ```
 
 實際的設定檔與備份位置由 `HOMEPAGE_CONFIG_PATH`、`HOMEPAGE_BACKUP_PATH` 決定，
 預設就是上面那兩個目錄。編輯器自身的設定檔（訪問網址、監聽位址、連接埠、各路徑、
-存取保護）預設位於 `cms-settings.yaml`，同樣不在版控內。
+存取保護）預設位於 `cms-settings.yaml`，同樣不在版控內。屬於自己機器的啟動參數
+寫在 `start-editor.local.bat`，也不進版控。
 
 ## 開發工具
 
@@ -238,9 +259,17 @@ npm run reindex -- --url http://192.168.1.10:11434/v1
 ```
 
 模型是參數而非寫死的選擇——不同機器裝的模型不同，適合的模型取決於被索引
-程式碼的語言。工具會先向端點詢問向量寬度再建立索引，避免寬度不符；換模型時
-務必用這個指令，它會帶 `--drop-embeddings` 重算舊向量（索引只記錄寬度、
-不記錄模型，同寬度換模型不會被自動偵測）。
+程式碼的語言。工具會先向端點詢問向量寬度再建立索引，避免寬度不符。它也會把
+上次使用的模型與端點記在 `.gitnexus/embedding-source.json`：
+
+- **同一個模型**再跑一次：保留既有的向量，只重新嵌入變動過的檔案。
+- **換了模型**：舊向量屬於不同的向量空間，工具會自動丟棄並全部重算。
+
+想強制全部重算時，加 `--drop-embeddings`。
+
+```bash
+npm run reindex -- --drop-embeddings
+```
 
 #### 機器層級的預設
 
