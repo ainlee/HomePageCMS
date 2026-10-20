@@ -71,6 +71,10 @@ npm test
   不要加內建預設值——猜錯只會在預覽區顯示無關的錯誤頁。
 - **前端資產不要連 CDN。** Vue、MDI 圖示、js-yaml 都是 npm 相依，由伺服器從
   `node_modules` 提供；內網環境沒有外網也要能開得起來。
+- **寫檔用 `writeFileSafe`，不要用 `copyFileSync`。** Windows 上帶有「隱藏」屬性的
+  檔案無法以寫入模式開啟（EPERM），而複製檔案會連屬性一起複製——備份與搬遷都
+  會變成下一次寫入的地雷。`writeFileSafe` 先寫暫存檔再 rename 覆蓋，屬性不傳染、
+  寫入也變成原子的。
 
 ## 規格
 

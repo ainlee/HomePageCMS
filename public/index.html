@@ -51,7 +51,14 @@
           <span class="stats" v-if="activeTab === 'bookmarks'">{{ bookmarkGroups.length }} 組書籤</span>
         </div>
 
-        <div class="groups-list">
+        <div v-if="authState.locked" class="locked-screen">
+          <i class="mdi mdi-lock"></i>
+          <p>這個編輯器需要存取密碼才能使用</p>
+          <button @click="showPasswordPrompt = true" class="btn btn-primary">
+            <i class="mdi mdi-key"></i> 輸入密碼
+          </button>
+        </div>
+        <div v-else class="groups-list">
           <template v-if="activeTab === 'services'">
 <div class="groups-list">
           <div v-for="(group, gi) in groups" :key="group.id" class="group-card" :class="{ 'drag-over': dragOverGroup === group.id }">
@@ -404,7 +411,7 @@
           <p class="field-hint">密碼由啟動編輯器時的環境變數 HOMEPAGE_CMS_PASSWORD 決定。</p>
         </div>
         <div class="modal-actions">
-          <button @click="showPasswordPrompt = false" class="btn btn-secondary">取消</button>
+          <button @click="dismissPasswordPrompt" class="btn btn-secondary">取消</button>
           <button @click="submitPassword" class="btn btn-primary">確定</button>
         </div>
       </div>

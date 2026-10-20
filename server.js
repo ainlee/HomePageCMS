@@ -166,7 +166,7 @@ function migrateLegacySettings() {
   if (!fs.existsSync(legacy)) return;
   if (path.resolve(legacy) === path.resolve(target)) return;
   try {
-    fs.copyFileSync(legacy, target);
+    writeFileSafe(target, fs.readFileSync(legacy));
     fs.unlinkSync(legacy);
     console.log(`Moved editor settings from ${legacy} to ${target}`);
   } catch (err) {
@@ -249,7 +249,29 @@ function settingsPayload() {
 function copyBackup(file, prefix) {
   if (!fs.existsSync(file)) return;
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  fs.copyFileSync(file, path.join(backupDirSetting().value, `${prefix}-${timestamp}.yaml`));
+  const target = path.join(backupDirSetting().value, `${prefix}-${timestamp}.yaml`);
+  // Read and write instead of copying: a copy inherits the file's attributes, and on
+  // Windows a file with the Hidden attribute cannot be opened for writing later on.
+  writeFileSafe(target, fs.readFileSync(file));
+}
+
+// Write a file without depending on the attributes of an existing one. On Windows,
+// opening a file that carries the Hidden attribute for writing fails with EPERM, and
+// copying a file also copies those attributes, so a hidden file (a dot-prefixed name
+// is hidden on Windows) would break every later save. Writing to a temporary file and
+// renaming it over the target avoids the problem and makes the write atomic.
+function writeFileSafe(file, content) {
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const temp = path.join(dir, `${path.basename(file)}.${process.pid}.tmp`);
+  try {
+    fs.writeFileSync(temp, content, 'utf8');
+    fs.renameSync(temp, file);
+  } finally {
+    if (fs.existsSync(temp)) {
+      try { fs.unlinkSync(temp); } catch { /* the rename already moved it */ }
+    }
+  }
 }
 
 // A hash of the file as it was when the browser loaded it. If the file changed on disk
@@ -269,7 +291,7 @@ function ensureConfigFiles() {
     const target = path.join(configDir, name + '.yaml');
     const example = path.join(PROJECT_DIR, 'config', name + '.example.yaml');
     if (!fs.existsSync(target) && fs.existsSync(example)) {
-      fs.copyFileSync(example, target);
+      writeFileSafe(target, fs.readFileSync(example));
       console.log(`Seeded ${target} from ${name}.example.yaml`);
     }
   }
@@ -369,7 +391,7 @@ app.put('/api/services', (req, res) => {
     copyBackup(file, 'services');
 
     // Write new content
-    fs.writeFileSync(file, raw, 'utf8');
+    writeFileSafe(file, raw);
 
     res.json({ success: true, hash: fileHash(file) });
   } catch (err) {
@@ -389,7 +411,7 @@ app.put('/api/bookmarks', (req, res) => {
     copyBackup(file, 'bookmarks');
 
     // Write new content
-    fs.writeFileSync(file, raw, 'utf8');
+    writeFileSafe(file, raw);
 
     res.json({ success: true, hash: fileHash(file) });
   } catch (err) {
@@ -498,12 +520,12 @@ app.put('/api/settings', (req, res) => {
     if (path.dirname(targetPath) && !fs.existsSync(path.dirname(targetPath))) {
       fs.mkdirSync(path.dirname(targetPath), { recursive: true });
     }
-    fs.writeFileSync(targetPath, yaml.dump(next), 'utf8');
+    writeFileSafe(targetPath, yaml.dump(next));
 
     if (targetPath !== currentPath) {
       // The bootstrap file keeps a pointer, so the next start finds the settings again.
       copyBackup(BOOTSTRAP_FILE, 'settings');
-      fs.writeFileSync(BOOTSTRAP_FILE, yaml.dump({ settingsPath: targetPath }), 'utf8');
+      writeFileSafe(BOOTSTRAP_FILE, yaml.dump({ settingsPath: targetPath }));
     }
 
     ensureConfigFiles();
@@ -549,7 +571,7 @@ app.post('/api/restore', (req, res) => {
       const currentBackup = path.join(backupDirSetting().value, prefix + timestamp + '-prerestore.yaml');
       fs.copyFileSync(target, currentBackup);
     }
-    fs.copyFileSync(backupFile, target);
+    writeFileSafe(target, fs.readFileSync(backupFile));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

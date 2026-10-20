@@ -39,6 +39,9 @@ createApp({
     const apiPassword = ref(localStorage.getItem('hcms-password') || '');
     const showPasswordPrompt = ref(false);
     const passwordInput = ref('');
+    // Access state. The editor asks for the password before it loads anything, so the
+    // page never sits there empty while the requests come back unauthorized.
+    const authState = reactive({ required: false, checked: false, locked: false });
     const toast = reactive({ show: false, msg: '', type: 'success' });
 
     // Where the editor reads its config, where it writes backups, and where its own
@@ -284,6 +287,10 @@ createApp({
       if (apiPassword.value) headers['X-CMS-Password'] = apiPassword.value;
       const res = await fetch(url, Object.assign({}, options, { headers }));
       if (res.status === 401) {
+        // The stored password is wrong or gone: forget it and ask again.
+        apiPassword.value = '';
+        localStorage.removeItem('hcms-password');
+        authState.locked = true;
         showPasswordPrompt.value = true;
         const err = new Error('需要存取密碼');
         err.unauthorized = true;
@@ -298,10 +305,38 @@ createApp({
       else localStorage.removeItem('hcms-password');
       showPasswordPrompt.value = false;
       passwordInput.value = '';
+      authState.locked = false;
       // Whatever was blocked by the 401 is loaded again, now with the password.
       loadSettings();
       loadServices();
       loadBookmarks();
+    }
+
+    // The password is checked before anything else is loaded. Otherwise every request
+    // would come back unauthorized, the editor would show an empty page and the
+    // prompt would appear only after the user had already clicked around.
+    async function initAuth() {
+      try {
+        const res = await fetch('/api/auth');
+        const json = await res.json();
+        authState.required = !!(json.data && json.data.required);
+      } catch (err) {
+        authState.required = false;
+      }
+      authState.checked = true;
+      if (authState.required && !apiPassword.value) {
+        authState.locked = true;
+        showPasswordPrompt.value = true;
+        return false;
+      }
+      return true;
+    }
+
+    // Dismissing the prompt leaves the editor in a clear "locked" state with a button
+    // to come back, instead of a half-loaded page that asks for the password again.
+    function dismissPasswordPrompt() {
+      showPasswordPrompt.value = false;
+      if (authState.required) authState.locked = true;
     }
 
     // The first visit opens the setup dialog. Skipping it leaves the editor without
@@ -885,11 +920,13 @@ createApp({
       }
     }
 
-    onMounted(() => {
+    onMounted(async () => {
       syncViewport();
-      loadSettings();
-      loadServices();
-      loadBookmarks();
+      if (await initAuth()) {
+        loadSettings();
+        loadServices();
+        loadBookmarks();
+      }
       window.addEventListener('resize', syncViewport);
       window.addEventListener('orientationchange', syncViewport);
       // Mobile URL-bar show/hide does not always fire window resize, and can also arrive
@@ -914,6 +951,7 @@ createApp({
       previewSrc, hasPreviewUrl, previewSourceLabel, runtimeInfo, settingsForm,
       sourceLabel, showPassword, isFirstRun,
       apiPassword, showPasswordPrompt, passwordInput,
+      authState,
       showGroupModal, showItemModal, showMoveModal, showBackups, showSettings,
       editingGroupId, editingItem, editingGroup,
       movingItem, movingFromGroup, dragOverGroup, backups, toast,
@@ -924,6 +962,7 @@ createApp({
       onDragStart, onDragOver, onDrop, onDragEnd,
       togglePreview, togglePreviewCollapsed, refreshPreview, loadBackups, restoreBackup,
       loadSettings, openSettings, saveSettings, skipSetup, submitPassword,
+      initAuth, dismissPasswordPrompt,
       previewCollapsed, isColumn, isResizing, splitRatio, startResize, onResize, stopResize,
       editorPanelStyle, previewPanelStyle,
       widgetTypeLabel,
