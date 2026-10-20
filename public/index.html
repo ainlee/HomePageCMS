@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Homepage 編輯器</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.x/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1><i class="mdi mdi-view-dashboard-edit"></i> Homepage 編輯器</h1>
+      </div>
+      <div class="topbar-right">
+        <button @click="togglePreview" class="btn btn-secondary">
+          <i class="mdi" :class="showPreview ? 'mdi-eye-off' : 'mdi-eye'"></i>
+          {{ showPreview ? '隱藏預覽' : '顯示預覽' }}
+        </button>
+        <button @click="loadBackups" class="btn btn-secondary">
+          <i class="mdi mdi-history"></i> 備份
+        </button>
+        <button @click="saveAll" :disabled="saving" class="btn btn-primary">
+          <i class="mdi mdi-content-save"></i> {{ saving ? '儲存中...' : '儲存' }}
+        </button>
+      </div>
+    </header>
+
+    <div class="main-content" :class="{ resizing: isResizing }">
+      <div class="editor-panel" :class="{ 'full-width': !showPreview }" :style="editorPanelStyle">
+        <div class="editor-toolbar">
+        <div class="tab-bar">
+          <button @click="activeTab = 'services'" class="tab-btn" :class="{ active: activeTab === 'services' }">
+            <i class="mdi mdi-view-dashboard"></i> 服務
+          </button>
+          <button @click="activeTab = 'bookmarks'" class="tab-btn" :class="{ active: activeTab === 'bookmarks' }">
+            <i class="mdi mdi-bookmark-multiple"></i> 書籤
+          </button>
+        </div>
+          <button v-if="activeTab === 'services'" @click="addGroup" class="btn btn-small btn-primary">
+            <i class="mdi mdi-plus"></i> 新增分組
+          </button>
+          <button v-if="activeTab === 'bookmarks'" @click="addBookmarkGroup" class="btn btn-small btn-primary">
+            <i class="mdi mdi-plus"></i> 新增書籤分組
+          </button>
+          <span class="stats" v-if="activeTab === 'services'">{{ groups.length }} 組 / {{ totalItems }} 個服務</span>
+          <span class="stats" v-if="activeTab === 'bookmarks'">{{ bookmarkGroups.length }} 組書籤</span>
+        </div>
+
+        <div class="groups-list">
+          <template v-if="activeTab === 'services'">
+<div class="groups-list">
+          <div v-for="(group, gi) in groups" :key="group.id" class="group-card" :class="{ 'drag-over': dragOverGroup === group.id }">
+            <div class="group-header">
+              <i class="mdi drag-handle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleGroup(group)"></i>
+              <span class="group-name" @click="toggleGroup(group)">{{ group.name }}</span>
+              <span class="group-badge">{{ group.items.length }}</span>
+              <span v-if="group.colSpan && group.colSpan > 1" class="group-colspan">col-{{ group.colSpan }}</span>
+              <div class="group-actions">
+                <button @click.stop="editGroup(group)" class="btn btn-icon" title="編輯分組">
+                  <i class="mdi mdi-pencil"></i>
+                </button>
+                <button @click.stop="deleteGroup(gi)" class="btn btn-icon btn-danger" title="刪除分組">
+                  <i class="mdi mdi-delete"></i>
+                </button>
+              </div>
+            </div>
+
+            <div v-show="!group.collapsed" class="group-items">
+              <div v-for="(item, ii) in group.items" :key="item.id" class="item-card"
+                   draggable="true"
+                   @dragstart="onDragStart($event, group, item)"
+                   @dragend="onDragEnd"
+                   @dragover.prevent="onDragOver($event, group)"
+                   @drop.prevent="onDrop($event, group)">
+                <div class="item-row">
+                  <i class="mdi mdi-drag item-drag"></i>
+                  <div class="item-icon-wrap">
+                    <i v-if="item.iconType === 'mdi' && item.icon" class="mdi item-icon" :class="item.icon"></i>
+                    <img v-else-if="item.icon" :src="item.icon" class="item-icon-img" @error="item.icon = ''">
+                    <i v-else class="mdi mdi-help-circle item-icon-none"></i>
+                  </div>
+                  <div class="item-info">
+                    <span class="item-name">{{ item.name }}</span>
+                    <span class="item-desc">{{ item.description }}</span>
+                  </div>
+                  <span class="item-widget-badge" :class="'badge-' + item.widgetType">{{ widgetTypeLabel(item.widgetType) }}</span>
+                  <div class="item-actions">
+                    <button @click="editItem(group, item)" class="btn btn-icon" title="編輯">
+                      <i class="mdi mdi-pencil"></i>
+                    </button>
+                    <button @click="moveItemToGroup(group, item)" class="btn btn-icon" title="移動到別的分組">
+                      <i class="mdi mdi-arrow-right-bold-circle"></i>
+                    </button>
+                    <button @click="deleteItem(group, ii)" class="btn btn-icon btn-danger" title="刪除">
+                      <i class="mdi mdi-delete"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <button @click="addItem(group)" class="btn btn-small btn-secondary add-item-btn">
+                <i class="mdi mdi-plus"></i> 新增服務
+              </button>
+            </div>
+          </div>
+        
+</template>
+
+          <template v-if="activeTab === 'bookmarks'">
+            <div v-for="(group, gi) in bookmarkGroups" :key="group.id" class="group-card">
+              <div class="group-header">
+                <i class="mdi drag-handle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleBookmarkGroup(group)"></i>
+                <span class="group-name" @click="toggleBookmarkGroup(group)">{{ group.name }}</span>
+                <span class="group-badge">{{ group.items.length }}</span>
+                <div class="group-actions">
+                  <button @click.stop="editBookmarkGroup(group)" class="btn btn-icon" title="編輯分組">
+                    <i class="mdi mdi-pencil"></i>
+                  </button>
+                  <button @click.stop="deleteBookmarkGroup(gi)" class="btn btn-icon btn-danger" title="刪除分組">
+                    <i class="mdi mdi-delete"></i>
+                  </button>
+                </div>
+              </div>
+              <div v-show="!group.collapsed" class="group-items">
+                <div v-for="(item, ii) in group.items" :key="item.id" class="item-card">
+                  <div class="item-row">
+                    <i class="mdi mdi-drag item-drag"></i>
+                    <div class="item-icon-wrap">
+                      <span class="bookmark-abbr">{{ item.abbr }}</span>
+                    </div>
+                    <div class="item-info">
+                      <span class="item-name">{{ item.name }}</span>
+                      <span class="item-desc">{{ item.href }}</span>
+                    </div>
+                    <div class="item-actions">
+                      <button @click="editBookmarkItem(group, item)" class="btn btn-icon" title="編輯">
+                        <i class="mdi mdi-pencil"></i>
+                      </button>
+                      <button @click="deleteBookmarkItem(group, ii)" class="btn btn-icon btn-danger" title="刪除">
+                        <i class="mdi mdi-delete"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <button @click="addBookmarkItem(group)" class="btn btn-small btn-secondary add-item-btn">
+                  <i class="mdi mdi-plus"></i> 新增書籤
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>      </div>
+
+      <div v-show="showPreview" class="resizer" 
+           @mousedown="startResize" 
+           @touchstart.prevent="startResize"
+           :class="{ resizing: isResizing }">
+        <div class="resizer-handle"></div>
+      </div>
+
+      <div v-show="showPreview" class="preview-panel" :class="{ collapsed: previewCollapsed }" :style="previewPanelStyle"
+           @click.self="previewCollapsed && togglePreviewCollapsed()">
+        <div class="preview-header" @click="previewCollapsed && togglePreviewCollapsed()">
+          <div class="preview-header-left">
+            <button @click.stop="togglePreviewCollapsed()" class="btn btn-icon" :title="previewCollapsed ? '展開預覽' : '折疊預覽'">
+              <i class="mdi" :class="previewCollapsed ? (isColumn ? 'mdi-chevron-left' : 'mdi-chevron-up') : (isColumn ? 'mdi-chevron-right' : 'mdi-chevron-down')"></i>
+            </button>
+            <span>{{ previewCollapsed ? '展開預覽' : '即時預覽' }}</span>
+          </div>
+          <button v-show="!previewCollapsed" @click.stop="refreshPreview" class="btn btn-icon"><i class="mdi mdi-refresh"></i></button>
+        </div>
+        <iframe v-show="!previewCollapsed" :src="previewUrl" class="preview-iframe" :key="previewKey"></iframe>
+      </div>
+    </div>
+
+    <!-- Group Modal -->
+    <div v-if="showGroupModal" class="modal-overlay" @click.self="showGroupModal = false">
+      <div class="modal">
+        <h2><i class="mdi mdi-folder-edit"></i> {{ editingGroupId ? '編輯分組' : '新增分組' }}</h2>
+        <div class="form-group">
+          <label>分組名稱</label>
+          <input v-model="editingGroup.name" type="text" placeholder="例如：遊戲與娛樂">
+        </div>
+        <div class="form-group">
+          <label>寬度 (col-span)</label>
+          <select v-model.number="editingGroup.colSpan">
+            <option :value="1">1 欄</option>
+            <option :value="2">2 欄</option>
+            <option :value="3">3 欄</option>
+            <option :value="4">4 欄</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button @click="showGroupModal = false" class="btn btn-secondary">取消</button>
+          <button @click="saveGroup" class="btn btn-primary">確定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Item Modal -->
+    <div v-if="showItemModal" class="modal-overlay" @click.self="showItemModal = false">
+      <div class="modal modal-wide">
+        <h2><i class="mdi mdi-pencil-circle"></i> {{ editingItemId ? '編輯服務' : '新增服務' }}</h2>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>服務名稱</label>
+            <input v-model="editingItem.name" type="text" placeholder="例如：RomM">
+          </div>
+          <div class="form-group">
+            <label>連結 (href)</label>
+            <input v-model="editingItem.href" type="text" placeholder="https://...">
+          </div>
+          <div class="form-group">
+            <label>說明</label>
+            <input v-model="editingItem.description" type="text" placeholder="服務說明">
+          </div>
+          <div class="form-group">
+            <label>開啟方式</label>
+            <select v-model="editingItem.target">
+              <option value="">本頁</option>
+              <option value="_blank">新分頁</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>圖標類型</label>
+            <select v-model="editingItem.iconType">
+              <option value="mdi">MDI 圖標</option>
+              <option value="url">圖片 URL</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>圖標值</label>
+            <div class="icon-input-wrap">
+              <input v-model="editingItem.icon" type="text" :placeholder="editingItem.iconType === 'mdi' ? 'mdi-gamepad-variant' : 'https://.../icon.png'">
+              <div class="icon-preview" v-if="editingItem.icon">
+                <i v-if="editingItem.iconType === 'mdi'" class="mdi" :class="editingItem.icon"></i>
+                <img v-else :src="editingItem.icon" @error="editingItem.icon = ''">
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>狀態追蹤</label>
+            <select v-model="editingItem.widgetType">
+              <option value="none">無</option>
+              <option value="container">本機 Docker 容器</option>
+              <option value="ping">遠端 ICMP Ping</option>
+              <option value="customapi">遠端 HTTP API</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ widgetValueLabel }}</label>
+            <input v-model="editingItem.widgetValue" type="text" :placeholder="widgetValuePlaceholder">
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button @click="showItemModal = false" class="btn btn-secondary">取消</button>
+          <button @click="saveItem" class="btn btn-primary">確定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Move Item Modal -->
+    <div v-if="showMoveModal" class="modal-overlay" @click.self="showMoveModal = false">
+      <div class="modal">
+        <h2><i class="mdi mdi-arrow-right-bold-circle"></i> 移動「{{ movingItem?.name }}」到...</h2>
+        <div class="move-targets">
+          <button v-for="g in groups" :key="g.id" @click="confirmMove(g)" class="btn btn-move">
+            <i class="mdi mdi-folder"></i> {{ g.name }}
+          </button>
+        </div>
+        <div class="modal-actions">
+          <button @click="showMoveModal = false" class="btn btn-secondary">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Backups Modal -->
+    <div v-if="showBackups" class="modal-overlay" @click.self="showBackups = false">
+      <div class="modal">
+        <h2><i class="mdi mdi-history"></i> 備份列表</h2>
+        <div class="backups-list">
+          <div v-for="b in backups" :key="b" class="backup-item">
+            <span class="backup-name">{{ b }}</span>
+            <button @click="restoreBackup(b)" class="btn btn-small btn-secondary">
+              <i class="mdi mdi-restore"></i> 還原
+            </button>
+          </div>
+          <p v-if="!backups.length" class="no-data">尚無備份</p>
+        </div>
+        <div class="modal-actions">
+          <button @click="showBackups = false" class="btn btn-secondary">關閉</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div v-if="toast.show" class="toast" :class="toast.type">
+      <i class="mdi" :class="toast.type === 'success' ? 'mdi-check-circle' : 'mdi-alert-circle'"></i>
+      {{ toast.msg }}
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

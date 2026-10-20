@@ -1,0 +1,45 @@
+---
+# For configuration options and examples, please see:
+# https://gethomepage.dev/configs/services/
+#
+# Copy this file to config/services.yaml and edit it, or let the editor create it for
+# you on first run. Every field is optional except the group and service names.
+
+- 遊戲與娛樂:
+    - RomM:
+        href: https://romm.example.com
+        description: 復古遊戲 ROM 管理平台
+        icon: mdi-gamepad-variant
+        ping: 192.168.1.10
+
+- 開發工具:
+    - code-server:
+        href: https://code.example.com
+        description: VS Code 網頁版
+        icon: mdi-microsoft-visual-studio-code
+        container: code-server
+
+    - Dockge:
+        href: https://dockge.example.com
+        description: Docker 容器管理
+        icon: mdi-docker
+        container: dockge
+
+- AI 與 API:
+    - MyLLM:
+        href: https://llm.example.com
+        description: AI API 管理平台
+        icon: mdi-api
+        customapi: https://llm.example.com/api/health
+
+- 其他服務:
+    - SillyTavern:
+        href: https://chat.example.com
+        target: _blank
+        description: AI 角色扮演前端
+        icon: mdi-chat
+
+    - WebDAV:
+        href: https://dav.example.com
+        description: 網路磁碟
+        icon: mdi-harddisk

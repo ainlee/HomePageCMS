@@ -1,0 +1,18 @@
+{
+  "name": "homepage-editor",
+  "version": "1.0.0",
+  "description": "Homepage YAML configuration editor",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/verify-collapse.mjs && node tests/verify-mobile.mjs && node tests/verify-visible-viewport.mjs",
+    "test:collapse": "node tests/verify-collapse.mjs",
+    "test:mobile": "node tests/verify-mobile.mjs",
+    "test:viewport": "node tests/verify-visible-viewport.mjs",
+    "shots": "node tests/shots-visible.mjs"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "js-yaml": "4.1.0"
+  }
+}

@@ -1,0 +1,5 @@
+# Normalize text files in the repository; check out with the platform's convention.
+* text=auto eol=lf
+
+# Batch files must keep CRLF to run on Windows.
+*.bat text eol=crlf
