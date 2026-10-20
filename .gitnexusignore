@@ -1,0 +1,16 @@
+# Bundled AI-tool assets. OpenSpec and UI/UX Pro Max ship their skills, templates and
+# reference data inside the project, which adds thousands of files that are third-party
+# data rather than this project's source. Indexing them would fill the knowledge graph
+# with nodes about font catalogues and icon lists instead of the editor itself.
+.agents/
+.claude/
+
+# The openspec/ directory holds the spec-driven workflow's own scaffolding plus the
+# generated specs. The specs are worth indexing; the scaffolding is not.
+openspec/changes/archive/
+
+# Local runtime data (also in .gitignore, listed here for the indexer).
+backups/
+config/services.yaml
+config/bookmarks.yaml
+shots/

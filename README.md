@@ -95,6 +95,40 @@ tests/           無頭 Chrome 版面測試
 server.js        Express API 與靜態檔服務
 ```
 
+## 開發工具
+
+專案已整合三個工具，clone 後不需再設定。
+
+### GitNexus — 程式碼知識圖譜
+
+把程式碼解析成知識圖譜，用來回答「這個函式被誰呼叫」「改動會影響什麼」這類問題。
+
+```bash
+gitnexus analyze        # 建立或更新索引，並更新 AGENTS.md / CLAUDE.md
+gitnexus status        # 查看索引狀態
+gitnexus query "預覽折疊"  # 查詢符號與執行流程
+```
+
+索引存在 `.gitnexus/`（已忽略，不進版本庫），每次改動程式碼後重跑 `analyze` 即可。`.gitnexusignore` 會把 AI 工具的技能檔案排除在圖譜之外，讓索引只描述本專案的程式碼。
+
+### OpenSpec — 規格驅動開發
+
+以變更提案（change）的方式管理功能開發：先寫規格與任務，再實作，最後歸檔成規格。
+
+```bash
+openspec list           # 檢視進行中的變更
+openspec validate <id>  # 驗證變更
+openspec archive <id>   # 歸檔完成的變更
+```
+
+目錄在 `openspec/`，文件以繁體中文撰寫（見 `openspec/config.yaml`）。Codex 與 Claude Code 的技能檔已安裝於 `.agents/skills/openspec-*` 與 `.claude/skills/openspec-*`。
+
+### UI/UX Pro Max — 介面設計資料庫
+
+內建 79 種樣式、192 組配色、74 組字體配對、119 條 UX 準則與 22 種技術堆疊的查詢資料庫。
+
+技能檔安裝於 `.agents/skills/ui-ux-pro-max/`（另含 banner-design、design、design-system、ui-styling 等）。向 AI 助理提出介面相關問題時，它會查閱這份資料庫再回答。
+
 ## License
 
 尚未指定授權。若要公開散布，建議補上一份授權條款。
