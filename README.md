@@ -120,6 +120,23 @@ gitnexus analyze --index-only # 知識圖譜
 
 `--index-only` 讓 GitNexus 不動 `AGENTS.md`（那份由人維護），也不安裝它的技能檔。
 
+### 語意搜尋
+
+預設只有關鍵字搜尋。再跑一次 `npm run reindex` 會把每個符號向量化，
+連到本機的 OpenAI 相容嵌入端點（預設 Ollama 的 `http://localhost:11434/v1`），
+於是「用中文描述一個問題」也能找到對應的程式碼：
+
+```bash
+npm run reindex -- --model qwen3-embedding:0.6b
+npm run reindex -- --model bge-m3
+npm run reindex -- --url http://192.168.1.10:11434/v1
+```
+
+模型是參數而非寫死的選擇——不同機器裝的模型不同，適合的模型取決於被索引
+程式碼的語言。工具會先向端點詢問向量寬度再建立索引，避免寬度不符；換模型時
+務必用這個指令，它會帶 `--drop-embeddings` 重算舊向量（索引只記錄寬度、
+不記錄模型，同寬度換模型不會被自動偵測）。
+
 ### GitNexus — 程式碼知識圖譜
 
 把程式碼解析成知識圖譜，用來回答「這個函式被誰呼叫」「改動會影響什麼」這類問題。

@@ -10,7 +10,8 @@
     "test:collapse": "node tests/verify-collapse.mjs",
     "test:mobile": "node tests/verify-mobile.mjs",
     "test:viewport": "node tests/verify-visible-viewport.mjs",
-    "shots": "node tests/shots-visible.mjs"
+    "shots": "node tests/shots-visible.mjs",
+    "reindex": "node tools/reindex.mjs"
   },
   "dependencies": {
     "express": "^5.3.0",

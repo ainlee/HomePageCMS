@@ -54,8 +54,27 @@ npm test
 ```bash
 npm i -g gitnexus@latest ui-ux-pro-max-cli@latest @fission-ai/openspec@latest
 uipro init --ai codex
-gitnexus analyze --index-only
+gitnexus analyze --index-only        # 關鍵字搜尋
+npm run reindex                       # 加上語意搜尋（需要本機的嵌入模型）
 ```
 
 用 `--index-only` 是為了讓 GitNexus 不動 `AGENTS.md`（那由人維護），
 也不安裝它的技能檔。
+
+### 語意搜尋
+
+`npm run reindex` 會連到本機的 OpenAI 相容嵌入端點（預設 Ollama 的
+`http://localhost:11434/v1`），把每個符號向量化，讓「用中文描述一個問題」
+也能找到對應的程式碼。模型是參數而非寫死的選擇，因為不同機器裝的模型不同，
+而適合的模型取決於被索引程式碼的語言：
+
+```bash
+npm run reindex -- --model qwen3-embedding:0.6b
+npm run reindex -- --model bge-m3
+npm run reindex -- --url http://192.168.1.10:11434/v1
+```
+
+工具會先向端點詢問向量寬度再建立索引，避免寬度不符。換模型時務必用這個指令
+（它會帶 `--drop-embeddings`）：索引只記錄向量寬度、不記錄是哪個模型產生的，
+同寬度換模型不會被偵測到，舊模型的向量會留在索引裡。
+
