@@ -147,8 +147,8 @@ Homepage 官方預設的連接埠是 3000，所以欄位留空時提示的就是
 | PUT | `/api/bookmarks` | 寫入 bookmarks.yaml（自動備份） |
 | GET | `/api/backups` | 列出備份 |
 | POST | `/api/restore` | 還原指定備份 |
-| GET | `/api/settings` | 讀取預覽網址、其來源與各路徑 |
-| PUT | `/api/settings` | 寫入預覽網址（自動備份） |
+| GET | `/api/settings` | 讀取全部執行期設定、其來源與各路徑 |
+| PUT | `/api/settings` | 寫入執行期設定（自動備份） |
 
 ## 測試
 
@@ -182,8 +182,8 @@ server.js        Express API 與靜態檔服務
 ```
 
 實際的設定檔與備份位置由 `HOMEPAGE_CONFIG_PATH`、`HOMEPAGE_BACKUP_PATH` 決定，
-預設就是上面那兩個目錄。編輯器自身的設定檔（目前只有預覽網址）預設位於
-`config/.homepage-cms.yaml`，同樣不在版控內。
+預設就是上面那兩個目錄。編輯器自身的設定檔（訪問網址、監聽位址、連接埠、各路徑、
+存取保護）預設位於 `cms-settings.yaml`，同樣不在版控內。
 
 ## 開發工具
 
