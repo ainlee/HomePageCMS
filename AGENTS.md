@@ -71,6 +71,11 @@ npm test
   不要加內建預設值——猜錯只會在預覽區顯示無關的錯誤頁。
 - **前端資產不要連 CDN。** Vue、MDI 圖示、js-yaml 都是 npm 相依，由伺服器從
   `node_modules` 提供；內網環境沒有外網也要能開得起來。
+- **前端檔案不快取。** `public/` 由 `no-store` 提供，因為範本與腳本必須版本一致；
+  瀏覽器留著舊範本又拿到新腳本，Vue 會在渲染時拋錯，整頁變白屏。改動模板時
+  若新增了綁定，腳本的 `setup` 回傳物件也要跟著加，兩邊要一起改。
+- **渲染錯誤要讓使用者看得見。** Vue 自己攔截渲染錯誤，`window.onerror` 收不到，
+  所以要註冊 `app.config.errorHandler`，讓 `index.html` 的錯誤面板能顯示出來。
 - **寫檔用 `writeFileSafe`，不要用 `copyFileSync`。** Windows 上帶有「隱藏」屬性的
   檔案無法以寫入模式開啟（EPERM），而複製檔案會連屬性一起複製——備份與搬遷都
   會變成下一次寫入的地雷。`writeFileSafe` 先寫暫存檔再 rename 覆蓋，屬性不傳染、

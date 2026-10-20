@@ -426,6 +426,39 @@
 
   <script src="/vendor/js-yaml/js-yaml.min.js"></script>
   <script src="/vendor/vue/vue.global.prod.js"></script>
+  <script>
+    // A render error inside Vue empties the whole page and leaves a blank screen. Show
+    // what happened instead, and point at the usual cause: a browser holding an old
+    // copy of the template next to a new copy of the script.
+    (function () {
+      window.__fatal = function (message) {
+        if (document.querySelector('.fatal-error')) return;
+        var box = document.createElement('div');
+        box.className = 'fatal-error';
+        var title = document.createElement('h2');
+        title.textContent = '編輯器發生錯誤';
+        var detail = document.createElement('p');
+        detail.className = 'fatal-detail';
+        detail.textContent = String(message);
+        var hint = document.createElement('p');
+        hint.className = 'fatal-hint';
+        hint.textContent = '通常是瀏覽器快取了舊版檔案。請按 Ctrl+F5 強制重新整理。';
+        var button = document.createElement('button');
+        button.className = 'btn btn-primary';
+        button.textContent = '重新載入';
+        button.addEventListener('click', function () { location.reload(); });
+        box.appendChild(title);
+        box.appendChild(detail);
+        box.appendChild(hint);
+        box.appendChild(button);
+        document.body.appendChild(box);
+      };
+      window.addEventListener('error', function (e) { window.__fatal(e.message || '未知錯誤'); });
+      window.addEventListener('unhandledrejection', function (e) {
+        window.__fatal((e.reason && e.reason.message) || '未知錯誤');
+      });
+    })();
+  </script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
 
-createApp({
+const cmsApp = createApp({
   setup() {
     // State
     const groups = ref([]);
@@ -970,4 +970,13 @@ createApp({
       addBookmarkItem, editBookmarkItem, deleteBookmarkItem
     };
   }
-}).mount('#app');
+});
+
+// Vue catches render errors itself, so the global error handler never sees them and
+// the page would just go blank. Registering the handler here as well turns a failed
+// render into a readable message (and a reload button) instead of a white screen.
+cmsApp.config.errorHandler = (err) => {
+  if (window.__fatal) window.__fatal((err && err.message) || String(err));
+};
+
+cmsApp.mount('#app');

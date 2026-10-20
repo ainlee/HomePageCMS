@@ -24,7 +24,13 @@ const SUGGESTED_PREVIEW_URL = 'http://localhost:3000';
 const BOOTSTRAP_FILE = process.env.HOMEPAGE_CMS_SETTINGS || DEFAULT_SETTINGS_FILE;
 
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+// The editor is a single page made of a hand-written template and a hand-written
+// script. A browser that keeps an old copy of one of them and a new copy of the other
+// makes Vue render with bindings that no longer exist, which kills the whole page.
+// The files are tiny, so they are always fetched fresh instead of being cached.
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-store')
+}));
 // The browser needs a YAML writer, Vue and the icon font. All three are installed as
 // packages and served from node_modules, so the editor works on a network without
 // internet access.
