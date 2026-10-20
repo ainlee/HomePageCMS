@@ -1,11 +1,7 @@
-import { rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { APP_URL, connect, evalJson, launchChrome, sleep } from './helpers.mjs';
+import { APP_URL, connect, createProfile, evalJson, launchChrome, removeProfile, sleep } from './helpers.mjs';
 
 const PORT = 9340;
-const PROFILE = join(tmpdir(), 'hp-mobile-verify');
-rmSync(PROFILE, { recursive: true, force: true });
+const PROFILE = createProfile('hp-mobile-verify');
 
 const chrome = launchChrome({ port: PORT, profile: PROFILE });
 const { cdp, sessionId, ws } = await connect(PORT);
@@ -244,4 +240,5 @@ check('desktop: layout still fills the viewport with a side-by-side split',
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
 ws.close(); chrome.kill();
+removeProfile(PROFILE);
 process.exit(failed.length ? 1 : 0);

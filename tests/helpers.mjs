@@ -1,6 +1,8 @@
 // Shared setup for the headless-Chrome checks.
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // Chrome location differs per platform and per install, so probe a list instead of
 // hardcoding one machine's path. CHROME_PATH overrides the search.
@@ -30,6 +32,19 @@ export function launchChrome({ port, profile }) {
     '--disable-extensions', '--mute-audio', '--hide-scrollbars',
     `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'
   ], { stdio: 'ignore' });
+}
+
+// A profile directory per run. Reusing a fixed path fails with EPERM when a previous
+// Chrome is still shutting down and holding the directory, so each run gets its own.
+export function createProfile(name) {
+  const dir = join(tmpdir(), `${name}-${process.pid}-${Date.now()}`);
+  rmSync(dir, { recursive: true, force: true });
+  return dir;
+}
+
+// Best-effort cleanup; the directory is in the temp folder, so a failure here is harmless.
+export function removeProfile(dir) {
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

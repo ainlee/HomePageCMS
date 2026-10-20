@@ -1,13 +1,9 @@
 // Checks the preview panel collapse behaviour: collapsing must move the divider and
 // hand the freed space to the editor, and the collapsed strip must stay expandable.
-import { rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { APP_URL, connect, evalJson, launchChrome, sleep, waitForApp } from './helpers.mjs';
+import { APP_URL, connect, createProfile, evalJson, launchChrome, removeProfile, sleep, waitForApp } from './helpers.mjs';
 
 const DEVTOOLS_PORT = 9333;
-const PROFILE = join(tmpdir(), 'hp-verify-profile');
-rmSync(PROFILE, { recursive: true, force: true });
+const PROFILE = createProfile('hp-verify');
 
 const chrome = launchChrome({ port: DEVTOOLS_PORT, profile: PROFILE });
 const { cdp, sessionId, ws } = await connect(DEVTOOLS_PORT);
@@ -211,4 +207,5 @@ console.log(`\n${results.length - failed.length}/${results.length} checks passed
 
 ws.close();
 chrome.kill();
+removeProfile(PROFILE);
 process.exit(failed.length ? 1 : 0);

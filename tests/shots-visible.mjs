@@ -1,17 +1,14 @@
 // Captures the reported phone condition: dvh/innerHeight report 844 while the area the
 // user can actually see is 600. The screenshot is clipped to the VISIBLE area, which is
 // what the phone shows, so the collapsed strip and the last service group must be in it.
-import { rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { APP_URL, connect, evalJson, launchChrome, sleep } from './helpers.mjs';
+import { APP_URL, connect, createProfile, evalJson, launchChrome, removeProfile, sleep } from './helpers.mjs';
 
 const OUT = join(process.cwd(), 'shots') + '\\';
 const PORT = 9346;
-const PROFILE = join(tmpdir(), 'hp-shots-visible');
+const PROFILE = createProfile('hp-shots-visible');
 const VISIBLE = 600;
-
-rmSync(PROFILE, { recursive: true, force: true });
 const chrome = launchChrome({ port: PORT, profile: PROFILE });
 const { cdp, sessionId, ws } = await connect(PORT);
 const ev = (e) => evalJson(cdp, sessionId, e);
@@ -46,3 +43,4 @@ await sleep(600);
 await shot('phone-visible-collapsed.png');
 
 ws.close(); chrome.kill();
+removeProfile(PROFILE);
