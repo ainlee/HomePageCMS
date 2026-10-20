@@ -14,7 +14,7 @@ npm start          # http://localhost:3456
 
 ```
 PORT                    編輯器連接埠（預設 3456）
-HOST                    綁定位址（預設 0.0.0.0，也可寫在 cms-settings.yaml 的 bindAddress）
+HOST                    綁定位址（預設 127.0.0.1，也可寫在 cms-settings.yaml 的 bindAddress）
 HOMEPAGE_CONFIG_PATH    Homepage 設定檔目錄（預設 config/）
 HOMEPAGE_BACKUP_PATH    備份目錄（預設 backups/）
 HOMEPAGE_CMS_SETTINGS   編輯器自身設定檔（預設 <專案>/cms-settings.yaml）

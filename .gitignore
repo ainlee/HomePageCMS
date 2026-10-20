@@ -11,6 +11,9 @@ backups/
 cms-settings.yaml
 .homepage-cms.yaml
 
+# Machine-specific launcher settings, read by start-editor.bat.
+start-editor.local.bat
+
 # Your own homepage configuration. It lists internal hosts, container names and
 # addresses, so it stays on the machine that runs the editor. The committed
 # config/*.example.yaml files show the expected shape.

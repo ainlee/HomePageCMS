@@ -11,7 +11,9 @@ const PROJECT_DIR = __dirname;
 // Defaults, all relative to the project directory, so a fresh clone works with no
 // setup and nothing here is tied to one particular deployment.
 const DEFAULT_PORT = 3456;
-const DEFAULT_BIND_ADDRESS = '0.0.0.0';
+// The editor can rewrite the Homepage configuration, so it only listens on the local
+// machine unless it is told otherwise. Opening it up is one setting (or HOST) away.
+const DEFAULT_BIND_ADDRESS = '127.0.0.1';
 const DEFAULT_CONFIG_DIR = path.join(PROJECT_DIR, 'config');
 const DEFAULT_BACKUP_DIR = path.join(PROJECT_DIR, 'backups');
 const DEFAULT_SETTINGS_FILE = path.join(PROJECT_DIR, 'cms-settings.yaml');
