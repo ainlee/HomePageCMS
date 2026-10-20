@@ -210,7 +210,7 @@ config/          Homepage 設定檔與範例檔
 backups/         執行時產生的備份（已忽略）
 openspec/        規格（specs/）與變更提案（changes/）
 tests/           無頭 Chrome 版面測試
-tools/           本機工具（語意搜尋索引）
+tools/           索引重建工具
 server.js        Express API 與靜態檔服務
 start-editor.bat Windows 啟動腳本（會讀取 start-editor.local.bat）
 open-browser.bat 啟動後自動開啟瀏覽器的小幫手
@@ -221,105 +221,23 @@ open-browser.bat 啟動後自動開啟瀏覽器的小幫手
 存取保護）預設位於 `cms-settings.yaml`，同樣不在版控內。屬於自己機器的啟動參數
 寫在 `start-editor.local.bat`，也不進版控。
 
-## 開發工具
+## 開發
 
-三個工具的**規格內容**跟進版本庫，**工具本體**則是安裝產物，由全域安裝提供。
-各工具更新時都會整份覆寫自己的產物，提交進來只會製造大 diff，也會把開發者
-各自的偏好綁進這個倉庫。
-
-| 內容 | 是否進版控 | 理由 |
-| --- | --- | --- |
-| `openspec/specs/` 規格 | 是 | 專案本身的設計文件，說明各能力目前的行為 |
-| `AGENTS.md` / `CLAUDE.md` | 是 | 給人和 AI 讀的專案說明 |
-| `.gitnexus/` 知識圖譜 | 否 | 本機索引，每次重跑 `gitnexus analyze` 重建 |
-| `.agents/`、`.claude/` 技能檔 | 否 | 工具安裝產物，內容隨工具版本變動 |
-| `ui-ux-pro-max/` 設計資料庫 | 否 | 數 MB 的第三方資料 |
-
-全新 clone 後，用以下指令補齊工具：
+規格在 `openspec/specs/`，逐能力分檔，記錄這個編輯器目前的行為。改動前先讀對應的
+規格；要新增或變更行為，先在 `openspec/changes/` 寫一份變更提案（說明為什麼、要改成
+什麼、影響範圍），實作完成後再歸檔成規格。
 
 ```bash
-npm i -g gitnexus@latest ui-ux-pro-max-cli@latest @fission-ai/openspec@latest
-openspec init                 # 規格工作流（openspec/ 已存在時用 openspec update）
-uipro init --ai codex         # 設計資料庫
-gitnexus analyze --index-only # 知識圖譜
+npm test    # 版面測試，需要本機有 Chrome 且編輯器正在執行
 ```
 
-`--index-only` 讓 GitNexus 不動 `AGENTS.md`（那份由人維護），也不安裝它的技能檔。
+開發時的幾條慣例：
 
-### 語意搜尋
-
-預設只有關鍵字搜尋。再跑一次 `npm run reindex` 會把每個符號向量化，
-連到本機的 OpenAI 相容嵌入端點（預設 Ollama 的 `http://localhost:11434/v1`），
-於是「用中文描述一個問題」也能找到對應的程式碼：
-
-```bash
-npm run reindex -- --model qwen3-embedding:0.6b
-npm run reindex -- --model bge-m3
-npm run reindex -- --url http://192.168.1.10:11434/v1
-```
-
-模型是參數而非寫死的選擇——不同機器裝的模型不同，適合的模型取決於被索引
-程式碼的語言。工具會先向端點詢問向量寬度再建立索引，避免寬度不符。它也會把
-上次使用的模型與端點記在 `.gitnexus/embedding-source.json`：
-
-- **同一個模型**再跑一次：保留既有的向量，只重新嵌入變動過的檔案。
-- **換了模型**：舊向量屬於不同的向量空間，工具會自動丟棄並全部重算。
-
-想強制全部重算時，加 `--drop-embeddings`。
-
-```bash
-npm run reindex -- --drop-embeddings
-```
-
-#### 機器層級的預設
-
-GitNexus 沒有全域設定檔可以放嵌入設定（`~/.gitnexus/config.json` 只給 wiki
-的 LLM 用），唯一的機制是環境變數。把它設在使用者層級，**所有專案共用**：
-
-```bash
-# PowerShell
-[Environment]::SetEnvironmentVariable('GITNEXUS_EMBEDDING_URL', 'http://localhost:11434/v1', 'User')
-[Environment]::SetEnvironmentVariable('GITNEXUS_EMBEDDING_MODEL', 'qwen3-embedding:0.6b', 'User')
-[Environment]::SetEnvironmentVariable('GITNEXUS_EMBEDDING_DIMS', '1024', 'User')
-```
-
-設定後（需重開終端機讓新行程繼承），任何新專案直接
-`gitnexus analyze --embeddings` 就會自動接上端點，不需要逐案設定。
-
-兩點注意事項：`GITNEXUS_EMBEDDING_DIMS` 在載入時讀取，預設 384
-（snowflake-arctic-embed-xs）；索引若以不同寬度建立，下次 analyze 會強制重建，
-以讓向量欄位寬度與實際模型一致。另外純關鍵字分析不帶 `--embeddings` 時不會
-呼叫端點，所以端點離線也不影響一般分析。
-
-### GitNexus — 程式碼知識圖譜
-
-把程式碼解析成知識圖譜，用來回答「這個函式被誰呼叫」「改動會影響什麼」這類問題。
-
-```bash
-gitnexus analyze        # 建立或更新索引，並更新 AGENTS.md / CLAUDE.md
-gitnexus status        # 查看索引狀態
-gitnexus query "預覽折疊"  # 查詢符號與執行流程
-```
-
-索引存在 `.gitnexus/`（已忽略，不進版本庫），每次改動程式碼後重跑 `analyze` 即可。`.gitnexusignore` 會把 AI 工具的技能檔案排除在圖譜之外，讓索引只描述本專案的程式碼。
-
-### OpenSpec — 規格驅動開發
-
-以變更提案（change）的方式管理功能開發：先寫規格與任務，再實作，最後歸檔成規格。
-
-```bash
-openspec list           # 檢視進行中的變更
-openspec validate <id>  # 驗證變更
-openspec archive <id>   # 歸檔完成的變更
-```
-
-目錄在 `openspec/`，文件以繁體中文撰寫（見 `openspec/config.yaml`）。Codex 與 Claude Code 的技能檔已安裝於 `.agents/skills/openspec-*` 與 `.claude/skills/openspec-*`。
-
-### UI/UX Pro Max — 介面設計資料庫
-
-內建 79 種樣式、192 組配色、74 組字體配對、119 條 UX 準則與 22 種技術堆疊的查詢資料庫。
-
-以 `uipro init --ai codex` 安裝到 `.agents/skills/`。其中 `ui-ux-pro-max/` 是那份查詢資料庫（不進版控，數 MB 且會被更新覆寫），`banner-design`、`design`、`design-system`、`ui-styling` 等外殼則隨專案一起版控。向 AI 助理提出介面相關問題時，它會查閱這份資料庫再回答。
+- **設定就是 Homepage 的 YAML 格式。** 編輯器與 Homepage 共用同一份檔案，不要發明
+  私有格式，也不要在存檔時把沒建模的欄位清掉。
+- **執行期設定不寫死在程式碼裡。** 網域、路徑、埠號一律走環境變數或設定檔。
+- **前端資產不連 CDN。** Vue、圖示字型與 YAML 函式庫都是 npm 相依，由伺服器提供，
+  內網沒有外網也要能開得起來。
 
 ## License
 
