@@ -2,6 +2,7 @@
   "name": "homepage-editor",
   "version": "1.0.0",
   "description": "Homepage YAML configuration editor",
+  "license": "MIT",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

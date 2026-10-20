@@ -152,4 +152,17 @@ openspec archive <id>   # 歸檔完成的變更
 
 ## License
 
-尚未指定授權。若要公開散布，建議補上一份授權條款。
+MIT。詳見 [LICENSE](LICENSE)。
+
+## 第三方元件
+
+本專案自身的程式碼採 MIT 授權，並使用下列第三方元件：
+
+| 元件 | 授權 | 取得方式 |
+| --- | --- | --- |
+| [Express](https://expressjs.com/) | MIT | npm 依賴 |
+| [js-yaml](https://github.com/nodeca/js-yaml) | MIT | npm 依賴 |
+| [Vue 3](https://vuejs.org/) | MIT | 執行時由 CDN 載入 |
+| [Material Design Icons](https://pictogrammers.com/library/mdi/) | Apache-2.0 | 執行時由 CDN 載入 |
+
+圖示字型與 Vue 皆由 CDN 載入，倉庫內未內嵌任何第三方資產。
