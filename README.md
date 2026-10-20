@@ -137,6 +137,26 @@ npm run reindex -- --url http://192.168.1.10:11434/v1
 務必用這個指令，它會帶 `--drop-embeddings` 重算舊向量（索引只記錄寬度、
 不記錄模型，同寬度換模型不會被自動偵測）。
 
+#### 機器層級的預設
+
+GitNexus 沒有全域設定檔可以放嵌入設定（`~/.gitnexus/config.json` 只給 wiki
+的 LLM 用），唯一的機制是環境變數。把它設在使用者層級，**所有專案共用**：
+
+```bash
+# PowerShell
+[Environment]::SetEnvironmentVariable('GITNEXUS_EMBEDDING_URL', 'http://localhost:11434/v1', 'User')
+[Environment]::SetEnvironmentVariable('GITNEXUS_EMBEDDING_MODEL', 'qwen3-embedding:0.6b', 'User')
+[Environment]::SetEnvironmentVariable('GITNEXUS_EMBEDDING_DIMS', '1024', 'User')
+```
+
+設定後（需重開終端機讓新行程繼承），任何新專案直接
+`gitnexus analyze --embeddings` 就會自動接上端點，不需要逐案設定。
+
+兩點注意事項：`GITNEXUS_EMBEDDING_DIMS` 在載入時讀取，預設 384
+（snowflake-arctic-embed-xs）；索引若以不同寬度建立，下次 analyze 會強制重建，
+以讓向量欄位寬度與實際模型一致。另外純關鍵字分析不帶 `--embeddings` 時不會
+呼叫端點，所以端點離線也不影響一般分析。
+
 ### GitNexus — 程式碼知識圖譜
 
 把程式碼解析成知識圖譜，用來回答「這個函式被誰呼叫」「改動會影響什麼」這類問題。

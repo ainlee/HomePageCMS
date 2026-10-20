@@ -78,3 +78,23 @@ npm run reindex -- --url http://192.168.1.10:11434/v1
 （它會帶 `--drop-embeddings`）：索引只記錄向量寬度、不記錄是哪個模型產生的，
 同寬度換模型不會被偵測到，舊模型的向量會留在索引裡。
 
+### 機器層級的預設
+
+這台機器的嵌入設定放在使用者層級的環境變數，所以**新專案不需要再設定一次**：
+
+```
+GITNEXUS_EMBEDDING_URL=http://localhost:11434/v1
+GITNEXUS_EMBEDDING_MODEL=qwen3-embedding:0.6b
+GITNEXUS_EMBEDDING_DIMS=1024
+```
+
+GitNexus 沒有全域設定檔可以放這些（`~/.gitnexus/config.json` 只給 wiki 的
+LLM 用），唯一的機制就是環境變數。設定好之後，在任何新專案直接
+`gitnexus analyze --embeddings` 就會自動接上端點。
+
+要注意 `GITNEXUS_EMBEDDING_DIMS` 是在載入時讀取的，預設 384
+（snowflake-arctic-embed-xs）。索引若以不同寬度建立，下次 analyze 會**強制
+重建**——這是為了讓向量欄位寬度與實際模型一致。
+
+純關鍵字分析（不帶 `--embeddings`）不會呼叫端點，所以端點離線時仍然正常運作。
+
