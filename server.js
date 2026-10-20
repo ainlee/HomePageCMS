@@ -6,11 +6,17 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3456;
 
-// Config path - can be set via env var or defaults to local dev path
+// Everything the editor needs to know about its environment comes from environment
+// variables. The defaults are relative to the project directory, so a fresh clone works
+// with no setup, and nothing here is tied to one particular deployment.
+const HOST = process.env.HOST || '0.0.0.0';
 const CONFIG_PATH = process.env.HOMEPAGE_CONFIG_PATH || path.join(__dirname, 'config');
+const BACKUP_DIR = process.env.HOMEPAGE_BACKUP_PATH || path.join(__dirname, 'backups');
+// The editor's own settings (currently just the preview target) live in a YAML file next
+// to the Homepage config, following the same "settings are files on disk" convention.
+const SETTINGS_FILE = process.env.HOMEPAGE_CMS_SETTINGS || path.join(CONFIG_PATH, '.homepage-cms.yaml');
 const SERVICES_FILE = path.join(CONFIG_PATH, 'services.yaml');
 const BOOKMARKS_FILE = path.join(CONFIG_PATH, 'bookmarks.yaml');
-const BACKUP_DIR = path.join(__dirname, 'backups');
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -18,6 +24,52 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Ensure directories exist
 if (!fs.existsSync(CONFIG_PATH)) fs.mkdirSync(CONFIG_PATH, { recursive: true });
 if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+// The editor's settings file. A broken file must not stop the editor from starting, so
+// reading failures degrade to "no settings" and the preview falls back to the env value.
+function readCmsSettings() {
+  try {
+    if (!fs.existsSync(SETTINGS_FILE)) return {};
+    const data = yaml.load(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+    return data && typeof data === 'object' ? data : {};
+  } catch (err) {
+    console.warn(`Could not read ${SETTINGS_FILE}: ${err.message}`);
+    return {};
+  }
+}
+
+// Precedence: settings file > HOMEPAGE_PREVIEW_URL > nothing. There is no built-in
+// default: a fresh install has no Homepage to point at, and guessing one would show an
+// unrelated error page in the preview. The source is reported back so the UI can tell
+// the user where the current value came from.
+function resolvePreviewUrl() {
+  const fromFile = readCmsSettings().previewUrl;
+  if (typeof fromFile === 'string' && fromFile.trim()) {
+    return { previewUrl: fromFile.trim(), source: 'settings-file' };
+  }
+  const fromEnv = (process.env.HOMEPAGE_PREVIEW_URL || '').trim();
+  if (fromEnv) return { previewUrl: fromEnv, source: 'env' };
+  return { previewUrl: '', source: 'unset' };
+}
+
+function settingsPayload() {
+  const { previewUrl, source } = resolvePreviewUrl();
+  return {
+    previewUrl,
+    previewUrlSource: source,
+    configPath: CONFIG_PATH,
+    backupPath: BACKUP_DIR,
+    settingsPath: SETTINGS_FILE
+  };
+}
+
+// Copy the current file into the backup directory before it is overwritten. Used for
+// both the Homepage config files and the editor's own settings file.
+function copyBackup(file, prefix) {
+  if (!fs.existsSync(file)) return;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  fs.copyFileSync(file, path.join(BACKUP_DIR, `${prefix}-${timestamp}.yaml`));
+}
 
 // Seed a fresh install from the committed examples so the editor has something to show
 // on first run. An existing config is never touched.
@@ -62,17 +114,13 @@ app.get('/api/bookmarks', (req, res) => {
 app.put('/api/services', (req, res) => {
   try {
     const { raw } = req.body;
-    
+
     // Create backup with timestamp
-    if (fs.existsSync(SERVICES_FILE)) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const backupFile = path.join(BACKUP_DIR, `services-${timestamp}.yaml`);
-      fs.copyFileSync(SERVICES_FILE, backupFile);
-    }
-    
+    copyBackup(SERVICES_FILE, 'services');
+
     // Write new content
     fs.writeFileSync(SERVICES_FILE, raw, 'utf8');
-    
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -83,18 +131,42 @@ app.put('/api/services', (req, res) => {
 app.put('/api/bookmarks', (req, res) => {
   try {
     const { raw } = req.body;
-    
+
     // Create backup with timestamp
-    if (fs.existsSync(BOOKMARKS_FILE)) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const backupFile = path.join(BACKUP_DIR, `bookmarks-${timestamp}.yaml`);
-      fs.copyFileSync(BOOKMARKS_FILE, backupFile);
-    }
-    
+    copyBackup(BOOKMARKS_FILE, 'bookmarks');
+
     // Write new content
     fs.writeFileSync(BOOKMARKS_FILE, raw, 'utf8');
-    
+
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/settings - the runtime settings the editor is running with
+app.get('/api/settings', (req, res) => {
+  res.json({ success: true, data: settingsPayload() });
+});
+
+// PUT /api/settings - store the preview target in the editor's settings file
+app.put('/api/settings', (req, res) => {
+  try {
+    const value = typeof req.body?.previewUrl === 'string' ? req.body.previewUrl.trim() : '';
+    if (value) {
+      let parsed;
+      try {
+        parsed = new URL(value);
+      } catch {
+        return res.status(400).json({ success: false, error: '預覽網址格式不正確' });
+      }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return res.status(400).json({ success: false, error: '預覽網址必須以 http:// 或 https:// 開頭' });
+      }
+    }
+    copyBackup(SETTINGS_FILE, 'settings');
+    fs.writeFileSync(SETTINGS_FILE, yaml.dump({ previewUrl: value }), 'utf8');
+    res.json({ success: true, data: settingsPayload() });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -104,7 +176,7 @@ app.put('/api/bookmarks', (req, res) => {
 app.get('/api/backups', (req, res) => {
   try {
     const files = fs.readdirSync(BACKUP_DIR)
-      .filter(f => f.startsWith('services-') && f.endsWith('.yaml'))
+      .filter(f => (f.startsWith('services-') || f.startsWith('settings-')) && f.endsWith('.yaml'))
       .sort()
       .reverse();
     res.json({ success: true, backups: files });
@@ -124,20 +196,29 @@ app.post('/api/restore', (req, res) => {
     if (!fs.existsSync(backupFile)) {
       return res.status(404).json({ success: false, error: 'Backup not found' });
     }
+    // A settings backup restores the editor's own settings; everything else restores
+    // services.yaml.
+    const isSettings = filename.startsWith('settings-');
+    const target = isSettings ? SETTINGS_FILE : SERVICES_FILE;
     // Backup current before restore
-    if (fs.existsSync(SERVICES_FILE)) {
+    if (fs.existsSync(target)) {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const currentBackup = path.join(BACKUP_DIR, 'services-' + timestamp + '-prerestore.yaml');
-      fs.copyFileSync(SERVICES_FILE, currentBackup);
+      const prefix = isSettings ? 'settings-' : 'services-';
+      const currentBackup = path.join(BACKUP_DIR, prefix + timestamp + '-prerestore.yaml');
+      fs.copyFileSync(target, currentBackup);
     }
-    fs.copyFileSync(backupFile, SERVICES_FILE);
+    fs.copyFileSync(backupFile, target);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, HOST, () => {
+  const { previewUrl, source } = resolvePreviewUrl();
   console.log(`Homepage Editor running at http://localhost:${PORT}`);
   console.log(`Config path: ${CONFIG_PATH}`);
+  console.log(`Backup path: ${BACKUP_DIR}`);
+  console.log(`Settings file: ${SETTINGS_FILE}`);
+  console.log(`Preview target: ${previewUrl} (${source})`);
 });

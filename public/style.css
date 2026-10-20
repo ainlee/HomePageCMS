@@ -235,6 +235,8 @@ body {
   flex-direction: column;
   background: var(--bg-card);
   overflow: hidden;
+  /* Anchor for the overlay that replaces the preview when no URL is configured. */
+  position: relative;
 }
 
 .preview-header {
@@ -245,9 +247,48 @@ body {
   border-bottom: 1px solid var(--border);
   font-size: 13px;
   font-weight: 500;
+  /* Stay above the empty-state overlay so the header buttons remain clickable. */
+  position: relative;
+  z-index: 1;
 }
 
 .preview-iframe { flex: 1; border: none; background: #fff; }
+
+/* Shown instead of the preview when no target URL is configured. The iframe stays in the
+   DOM (and visible) so the panel keeps its height and the layout does not shift. */
+.preview-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.preview-empty i { font-size: 32px; opacity: 0.5; }
+.preview-empty p { margin: 0; }
+
+/* Settings dialog */
+.field-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.path-value {
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-family: monospace;
+  word-break: break-all;
+}
 
 /* Modal */
 .modal-overlay {

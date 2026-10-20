@@ -7,7 +7,10 @@ createApp({
     const bookmarkGroups = ref([]);
     const activeTab = ref('services');
     const showPreview = ref(true);
-    const previewUrl = ref('https://home.928202333.xyz');
+    // The preview target comes from the server (settings file > env var > unset), so no
+    // deployment-specific URL is baked into the front end.
+    const previewUrl = ref('');
+    const previewUrlSource = ref('');
     const previewKey = ref(0);
     const previewCollapsed = ref(false);
     const isResizing = ref(false);
@@ -20,6 +23,7 @@ createApp({
     const showItemModal = ref(false);
     const showMoveModal = ref(false);
     const showBackups = ref(false);
+    const showSettings = ref(false);
     const editingGroupId = ref(null);
     const editingItemId = ref(null);
     const movingItem = ref(null);
@@ -27,6 +31,12 @@ createApp({
     const dragOverGroup = ref(null);
     const backups = ref([]);
     const toast = reactive({ show: false, msg: '', type: 'success' });
+
+    // Where the editor reads its config, where it writes backups, and where its own
+    // settings live. Read-only, shown in the settings dialog so the operator can confirm
+    // the deployment without reading the source.
+    const runtimeInfo = reactive({ configPath: '', backupPath: '', settingsPath: '' });
+    const settingsForm = reactive({ previewUrl: '' });
 
     const editingGroup = reactive({ name: '', colSpan: 1 });
     const editingItem = reactive({
@@ -40,6 +50,15 @@ createApp({
     // Computed
     const totalItems = computed(() => groups.value.reduce((sum, g) => sum + g.items.length, 0));
     const isColumn = computed(() => viewportWidth.value > 768);
+    const hasPreviewUrl = computed(() => !!previewUrl.value);
+    // An empty src would make the iframe load the editor itself, so fall back to a blank
+    // document and let the overlay ask for a URL instead.
+    const previewSrc = computed(() => previewUrl.value || 'about:blank');
+    const previewSourceLabel = computed(() => ({
+      'settings-file': '編輯器設定檔',
+      'env': '環境變數 HOMEPAGE_PREVIEW_URL',
+      'unset': '尚未設定'
+    })[previewUrlSource.value] || '未知');
 
     // Layout: the preview panel keeps a fixed flex-basis while the editor fills whatever
     // is left, so collapsing actually moves the divider instead of only hiding the iframe.
@@ -531,6 +550,54 @@ createApp({
     function togglePreview() { showPreview.value = !showPreview.value; }
     function refreshPreview() { previewKey.value++; }
     function togglePreviewCollapsed() { previewCollapsed.value = !previewCollapsed.value; }
+
+    // Runtime settings
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || '讀取設定失敗');
+        previewUrl.value = json.data.previewUrl || '';
+        previewUrlSource.value = json.data.previewUrlSource || '';
+        runtimeInfo.configPath = json.data.configPath || '';
+        runtimeInfo.backupPath = json.data.backupPath || '';
+        runtimeInfo.settingsPath = json.data.settingsPath || '';
+        settingsForm.previewUrl = previewUrl.value;
+      } catch (err) {
+        showToast('讀取設定失敗: ' + err.message, 'error');
+      }
+    }
+
+    function openSettings() {
+      settingsForm.previewUrl = previewUrl.value;
+      showSettings.value = true;
+    }
+
+    async function saveSettings() {
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ previewUrl: settingsForm.previewUrl })
+        });
+        const json = await res.json();
+        if (!json.success) {
+          showToast('儲存失敗: ' + (json.error || '未知錯誤'), 'error');
+          return;
+        }
+        previewUrl.value = json.data.previewUrl || '';
+        previewUrlSource.value = json.data.previewUrlSource || '';
+        runtimeInfo.configPath = json.data.configPath || '';
+        runtimeInfo.backupPath = json.data.backupPath || '';
+        runtimeInfo.settingsPath = json.data.settingsPath || '';
+        showSettings.value = false;
+        showToast('已儲存設定');
+        refreshPreview();
+      } catch (err) {
+        showToast('儲存失敗: ' + err.message, 'error');
+      }
+    }
+
     // Resize logic
     function startResize(e) {
       isResizing.value = true;
@@ -593,6 +660,8 @@ createApp({
         if (json.success) {
           showToast('已還原');
           loadServices();
+          // Restoring a settings backup changes the preview target, so re-read it.
+          loadSettings();
           showBackups.value = false;
         } else {
           showToast('還原失敗: ' + json.error, 'error');
@@ -604,6 +673,7 @@ createApp({
 
     onMounted(() => {
       syncViewport();
+      loadSettings();
       loadServices();
       loadBookmarks();
       window.addEventListener('resize', syncViewport);
@@ -627,7 +697,8 @@ createApp({
 
     return {
       groups, bookmarkGroups, activeTab, showPreview, previewUrl, previewKey, saving,
-      showGroupModal, showItemModal, showMoveModal, showBackups,
+      previewSrc, hasPreviewUrl, previewSourceLabel, runtimeInfo, settingsForm,
+      showGroupModal, showItemModal, showMoveModal, showBackups, showSettings,
       editingGroupId, editingItem, editingGroup,
       movingItem, movingFromGroup, dragOverGroup, backups, toast,
       totalItems, widgetValueLabel, widgetValuePlaceholder,
@@ -636,6 +707,7 @@ createApp({
       moveItemToGroup, confirmMove,
       onDragStart, onDragOver, onDrop, onDragEnd,
       togglePreview, togglePreviewCollapsed, refreshPreview, loadBackups, restoreBackup,
+      loadSettings, openSettings, saveSettings,
       previewCollapsed, isColumn, isResizing, splitRatio, startResize, onResize, stopResize,
       editorPanelStyle, previewPanelStyle,
       widgetTypeLabel,

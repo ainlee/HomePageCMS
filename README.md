@@ -28,17 +28,42 @@ npm start
 
 Windows 使用者也可以直接執行 `start-editor.bat`。
 
-### 設定檔位置
+### 執行期設定
 
-預設讀寫專案目錄下的 `config/`。若要指向別處（例如 NAS 共用資料夾），設定環境變數：
+編輯器不把任何特定部署環境的值寫在程式碼裡，全部由環境變數決定。未設定時的
+預設值都相對於專案目錄，因此剛 clone 下來就能直接跑。
+
+| 環境變數 | 預設值 | 說明 |
+| --- | --- | --- |
+| `PORT` | `3456` | 編輯器的連接埠 |
+| `HOST` | `0.0.0.0` | 編輯器綁定的位址 |
+| `HOMEPAGE_CONFIG_PATH` | `<專案>/config` | Homepage 設定檔（`services.yaml`、`bookmarks.yaml`）所在目錄 |
+| `HOMEPAGE_BACKUP_PATH` | `<專案>/backups` | 備份目錄 |
+| `HOMEPAGE_CMS_SETTINGS` | `<設定檔目錄>/.homepage-cms.yaml` | 編輯器自身的設定檔 |
+| `HOMEPAGE_PREVIEW_URL` | 無 | 預覽目標網址；未設定時需於介面設定 |
+
+例如把設定指到 NAS 共用資料夾、備份指到掛載點、換一個連接埠：
 
 ```bash
-HOMEPAGE_CONFIG_PATH=/path/to/homepage/config PORT=3899 npm start
+HOMEPAGE_CONFIG_PATH=/path/to/homepage/config \
+HOMEPAGE_BACKUP_PATH=/path/to/backups \
+PORT=3899 npm start
 ```
+
+注意 `HOMEPAGE_` 開頭的變數屬於 Homepage 自己的命名空間（例如
+`HOMEPAGE_ALLOWED_HOSTS`），編輯器專用的那幾個是另一組，別搞混。
 
 ### 預覽目標
 
-預覽面板載入的網址寫在 `public/app.js` 的 `previewUrl`，預設為 `https://home.928202333.xyz`，請改成你的 Homepage 實例位置。
+預覽面板載入哪個 Homepage 由執行期設定決定，決定順序是
+**編輯器設定檔 → `HOMEPAGE_PREVIEW_URL` → 尚未設定**。
+
+最簡單的做法是點右上角的齒輪按鈕，把 Homepage 網址填進「Homepage 預覽網址」
+並儲存；它會寫進 `HOMEPAGE_CMS_SETTINGS` 指定的檔案，重啟後仍在。介面同時會
+顯示目前這個值來自設定檔、環境變數還是尚未設定，以及設定檔與備份的實際位置。
+
+預覽網址是**瀏覽器**要能開到的位址。Homepage 若跑在容器內網，請填使用者瀏覽器
+打得開的網址，而不是容器內部的主機名稱。
 
 ## 設定檔格式
 
@@ -63,6 +88,8 @@ HOMEPAGE_CONFIG_PATH=/path/to/homepage/config PORT=3899 npm start
 | PUT | `/api/bookmarks` | 寫入 bookmarks.yaml（自動備份） |
 | GET | `/api/backups` | 列出備份 |
 | POST | `/api/restore` | 還原指定備份 |
+| GET | `/api/settings` | 讀取預覽網址、其來源與各路徑 |
+| PUT | `/api/settings` | 寫入預覽網址（自動備份） |
 
 ## 測試
 
@@ -94,6 +121,10 @@ backups/         執行時產生的備份（已忽略）
 tests/           無頭 Chrome 版面測試
 server.js        Express API 與靜態檔服務
 ```
+
+實際的設定檔與備份位置由 `HOMEPAGE_CONFIG_PATH`、`HOMEPAGE_BACKUP_PATH` 決定，
+預設就是上面那兩個目錄。編輯器自身的設定檔（目前只有預覽網址）預設位於
+`config/.homepage-cms.yaml`，同樣不在版控內。
 
 ## 開發工具
 
