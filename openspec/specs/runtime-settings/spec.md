@@ -1,7 +1,10 @@
 # runtime-settings Specification
 
 ## Purpose
-TBD - created by archiving change decouple-runtime-settings. Update Purpose after archive.
+
+執行期設定指編輯器啟動時決定「自己在哪裡、預覽什麼」的設定。把它們放進環境變數
+與編輯器自己的設定檔，框架就只認得相對路徑，任何環境的值都由使用者提供，
+程式碼裡不會出現特定部署的網域或路徑。
 
 ## Requirements
 
