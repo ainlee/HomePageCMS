@@ -55,6 +55,9 @@
           <button @click="activeTab = 'bookmarks'" class="tab-btn" :class="{ active: activeTab === 'bookmarks' }">
             <i class="mdi mdi-bookmark-multiple"></i> {{ t('tabs.bookmarks') }}
           </button>
+          <button @click="openAppearanceTab" class="tab-btn" :class="{ active: activeTab === 'appearance' }">
+            <i class="mdi mdi-palette"></i> {{ t('tabs.appearance') }}
+          </button>
         </div>
           <button v-if="activeTab === 'services'" @click="addGroup" class="btn btn-small btn-primary">
             <i class="mdi mdi-plus"></i> {{ t('tabs.addGroup') }}
@@ -64,6 +67,11 @@
           </button>
           <span class="stats" v-if="activeTab === 'services'">{{ t('tabs.statsServices', { count: groups.length, total: totalItems }) }}</span>
           <span class="stats" v-if="activeTab === 'bookmarks'">{{ t('tabs.statsBookmarks', { count: bookmarkGroups.length }) }}</span>
+          <span class="stats" v-if="activeTab === 'appearance'">
+            <template v-if="appearanceDirty">{{ t('appearance.unsaved') }}</template>
+            <template v-else-if="appearanceReady">{{ t('appearance.savedState') }}</template>
+            <template v-else>{{ t('appearance.loading') }}</template>
+          </span>
         </div>
 
         <div v-if="authState.locked" class="locked-screen">
@@ -171,6 +179,111 @@
                 <button @click="addBookmarkItem(group)" class="btn btn-small btn-secondary add-item-btn">
                   <i class="mdi mdi-plus"></i> {{ t('bookmark.add') }}
                 </button>
+              </div>
+            </div>
+          </template>
+          <template v-if="activeTab === 'appearance'">
+            <div class="appearance-panel">
+              <div class="appearance-head">
+                <p class="appearance-hint">{{ t('appearance.hint') }}</p>
+                <button @click="saveAppearance" class="btn btn-small btn-primary" :disabled="!appearanceDirty">
+                  <i class="mdi mdi-content-save"></i> {{ t('appearance.save') }}
+                </button>
+                <button @click="loadAppearance" class="btn btn-icon btn-secondary" :title="t('appearance.reload')">
+                  <i class="mdi mdi-refresh"></i>
+                </button>
+              </div>
+
+              <div class="appearance-section">
+                <h3 class="appearance-title">{{ t('appearance.colorTitle') }}</h3>
+                <div class="palette-grid">
+                  <button v-for="c in appearancePalette" :key="c.id" type="button"
+                          class="palette-swatch" :class="{ active: appearance.color === c.id }"
+                          :title="c.id" @click="appearance.color = c.id">
+                    <span class="swatch-pair">
+                      <span class="swatch-light" :style="{ background: c.light }"></span>
+                      <span class="swatch-dark" :style="{ background: c.dark }"></span>
+                    </span>
+                    <span class="swatch-name">{{ c.id }}</span>
+                  </button>
+                </div>
+                <p v-if="appearance.color && !knownPaletteIds.includes(appearance.color)" class="appearance-note">
+                  {{ t('appearance.unknownColor', { color: appearance.color }) }}
+                </p>
+              </div>
+
+              <div class="appearance-section">
+                <h3 class="appearance-title">{{ t('appearance.styleTitle') }}</h3>
+                <div class="form-grid appearance-grid">
+                  <div class="form-group">
+                    <label>{{ t('appearance.theme') }}</label>
+                    <select v-model="appearance.theme">
+                      <option v-for="v in appearanceChoices('theme')" :key="v" :value="v">{{ appearanceChoiceLabel('theme', v) }}</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.cardBlur') }}</label>
+                    <select v-model="appearance.cardBlur">
+                      <option v-for="v in appearanceChoices('cardBlur')" :key="v" :value="v">{{ appearanceChoiceLabel('cardBlur', v) }}</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.headerStyle') }}</label>
+                    <select v-model="appearance.headerStyle">
+                      <option v-for="v in appearanceChoices('headerStyle')" :key="v" :value="v">{{ appearanceChoiceLabel('headerStyle', v) }}</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.cardStyle') }}</label>
+                    <select v-model="appearance.cardStyle">
+                      <option v-for="v in appearanceChoices('cardStyle')" :key="v" :value="v">{{ appearanceChoiceLabel('cardStyle', v) }}</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.blockStyle') }}</label>
+                    <select v-model="appearance.blockStyle">
+                      <option v-for="v in appearanceChoices('blockStyle')" :key="v" :value="v">{{ appearanceChoiceLabel('blockStyle', v) }}</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.iconStyle') }}</label>
+                    <select v-model="appearance.iconStyle">
+                      <option v-for="v in appearanceChoices('iconStyle')" :key="v" :value="v">{{ appearanceChoiceLabel('iconStyle', v) }}</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.font') }}</label>
+                    <select v-model="appearance.font">
+                      <option v-for="v in appearanceChoices('font')" :key="v" :value="v">{{ appearanceChoiceLabel('font', v) }}</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="appearance-section">
+                <h3 class="appearance-title">{{ t('appearance.backgroundTitle') }}</h3>
+                <div class="form-grid appearance-grid">
+                  <div class="form-group appearance-wide">
+                    <label>{{ t('appearance.backgroundImage') }}</label>
+                    <input v-model="appearance.backgroundImage" type="text" :placeholder="t('appearance.backgroundImagePlaceholder')">
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.backgroundBlur') }}</label>
+                    <input v-model="appearance.backgroundBlur" type="text" :placeholder="t('appearance.backgroundBlurPlaceholder')">
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.backgroundSaturate') }}</label>
+                    <input v-model="appearance.backgroundSaturate" type="text" :placeholder="t('appearance.backgroundNumberPlaceholder')">
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.backgroundBrightness') }}</label>
+                    <input v-model="appearance.backgroundBrightness" type="text" :placeholder="t('appearance.backgroundNumberPlaceholder')">
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.backgroundOpacity') }}</label>
+                    <input v-model="appearance.backgroundOpacity" type="text" :placeholder="t('appearance.backgroundNumberPlaceholder')">
+                  </div>
+                </div>
               </div>
             </div>
           </template>

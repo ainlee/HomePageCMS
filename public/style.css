@@ -565,6 +565,93 @@ body {
 
 .form-grid .form-group:first-child { grid-column: 1 / -1; }
 
+/* Homepage appearance */
+.appearance-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.appearance-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.appearance-hint {
+  flex: 1;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.appearance-section { margin-bottom: 18px; }
+.appearance-section:last-child { margin-bottom: 0; }
+
+.appearance-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* The colour ramps of Homepage, one button each. The two squares show the light
+   and the dark shade of the ramp. */
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+}
+
+.palette-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.palette-swatch:hover { border-color: var(--accent); }
+.palette-swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.palette-swatch .swatch-pair { display: flex; gap: 3px; }
+.palette-swatch .swatch-light,
+.palette-swatch .swatch-dark {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+.palette-swatch .swatch-name {
+  font-size: 11px;
+  color: var(--text-dim);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.appearance-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* The style fields sit two to a row, so the first one does not span the whole
+   width like it does in the item dialog. */
+.appearance-grid .form-group:first-child { grid-column: auto; }
+.appearance-grid .appearance-wide { grid-column: 1 / -1; }
+
 .icon-input-wrap { display: flex; gap: 8px; align-items: center; }
 .icon-input-wrap input { flex: 1; }
 .icon-preview {

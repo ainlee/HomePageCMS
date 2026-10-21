@@ -6,6 +6,7 @@ const net = require('net');
 const crypto = require('crypto');
 const i18n = require('./lib/i18n');
 const themeLib = require('./lib/themes');
+const appearanceLib = require('./lib/homepage-appearance');
 const { parseIni } = require('./lib/ini');
 // The version and the repository come from the package file, so the version in the
 // interface is always the version that is running.
@@ -267,6 +268,12 @@ function servicesFile() {
 
 function bookmarksFile() {
   return path.join(configDirSetting().value, 'bookmarks.yaml');
+}
+
+// Homepage's own settings file. It holds the appearance of the dashboard, and the
+// editor writes the visual fields of it.
+function homepageSettingsFile() {
+  return path.join(configDirSetting().value, 'settings.yaml');
 }
 
 // Older installs kept the editor's settings inside the Homepage config directory. Move
@@ -553,6 +560,99 @@ app.put('/api/bookmarks', (req, res) => {
     writeFileSafe(file, raw);
 
     res.json({ success: true, hash: fileHash(file) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Homepage's settings.yaml has a comment header that points at the documentation.
+// It is kept as it is, so a file the user wrote by hand does not lose its comments.
+const HOMEPAGE_SETTINGS_HEADER =
+  '---\n# For configuration options and examples, please see:\n' +
+  '# https://gethomepage.dev/configs/settings/\n\n';
+
+function settingsHeader(content) {
+  const lines = String(content || '').split('\n');
+  const kept = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed === '---' || trimmed.startsWith('#')) {
+      kept.push(line);
+      continue;
+    }
+    break;
+  }
+  return kept.join('\n').replace(/\n+$/, '');
+}
+
+// GET /api/homepage-settings - the appearance of the Homepage dashboard
+app.get('/api/homepage-settings', (req, res) => {
+  try {
+    const file = homepageSettingsFile();
+    const exists = fs.existsSync(file);
+    const content = exists ? fs.readFileSync(file, 'utf8') : '';
+    let settings = {};
+    if (exists) {
+      const parsed = yaml.load(content);
+      if (parsed && typeof parsed === 'object') settings = parsed;
+    }
+    res.json({
+      success: true,
+      data: {
+        values: appearanceLib.readAppearance(settings),
+        palette: appearanceLib.palette(),
+        choices: appearanceLib.CHOICES,
+        exists,
+        path: file
+      },
+      hash: fileHash(file)
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/homepage-settings - write the appearance fields of settings.yaml
+app.put('/api/homepage-settings', (req, res) => {
+  try {
+    const file = homepageSettingsFile();
+    const conflict = checkUnchanged(file, req.body && req.body.hash);
+    if (conflict) return res.status(409).json({ success: false, error: conflict });
+
+    const values = (req.body && req.body.values) || {};
+    // A value that is not a single line cannot go into the file, and a value that
+    // long is not one of Homepage's choices.
+    for (const [key, value] of Object.entries(values)) {
+      if (typeof value !== 'string') continue;
+      if (/[\r\n]/.test(value) || value.length > 300) {
+        return res.status(400).json({ success: false, error: '設定值格式不正確: ' + key });
+      }
+    }
+
+    const exists = fs.existsSync(file);
+    const content = exists ? fs.readFileSync(file, 'utf8') : '';
+    let settings = {};
+    if (exists) {
+      const parsed = yaml.load(content);
+      if (parsed && typeof parsed === 'object') settings = parsed;
+    }
+    const next = appearanceLib.applyAppearance(settings, values);
+    const header = settingsHeader(content) || HOMEPAGE_SETTINGS_HEADER.trimEnd();
+    const output = header + '\n\n' + yaml.dump(next);
+
+    // Nothing changed: leave the file alone, so saving does not churn the file or
+    // the backups.
+    if (exists && content === output) {
+      return res.json({ success: true, data: { values: appearanceLib.readAppearance(next), unchanged: true }, hash: fileHash(file) });
+    }
+
+    copyBackup(file, 'homepage-settings');
+    writeFileSafe(file, output);
+    res.json({
+      success: true,
+      data: { values: appearanceLib.readAppearance(next) },
+      hash: fileHash(file)
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

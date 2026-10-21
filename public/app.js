@@ -430,6 +430,20 @@ const cmsApp = createApp({
     // out of the reactive object the dialog binds to.
     let bookmarkItemGroupId = null;
 
+    // Homepage's own appearance, read from the settings.yaml in the config
+    // directory. The loaded values are kept next to the edited ones, so the editor
+    // knows whether anything changed and only writes when it has to.
+    const appearanceFields = [
+      'theme', 'color', 'cardBlur', 'headerStyle', 'cardStyle', 'blockStyle',
+      'iconStyle', 'font', 'backgroundImage', 'backgroundBlur',
+      'backgroundSaturate', 'backgroundBrightness', 'backgroundOpacity'
+    ];
+    const appearance = reactive(Object.fromEntries(appearanceFields.map((f) => [f, ''])));
+    const appearanceLoaded = reactive(Object.fromEntries(appearanceFields.map((f) => [f, ''])));
+    const appearanceHash = ref(null);
+    const appearanceMeta = ref({ palette: [], choices: {}, exists: false, path: '' });
+    const appearanceReady = ref(false);
+
     // Drag state
     let dragSource = null;
 
@@ -825,7 +839,7 @@ const cmsApp = createApp({
     async function saveAll() {
       saving.value = true;
       try {
-        const [svcRes, bmRes] = await Promise.all([
+        const jobs = [
           apiFetch('/api/services', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -836,16 +850,36 @@ const cmsApp = createApp({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ raw: buildBookmarkYaml(), hash: bookmarksHash.value })
           })
-        ]);
+        ];
+        // The appearance of the Homepage dashboard is only written when it was
+        // actually changed, so an ordinary save leaves settings.yaml alone.
+        if (appearanceDirty.value) {
+          jobs.push(apiFetch('/api/homepage-settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              values: Object.fromEntries(appearanceFields.map((f) => [f, appearance[f] || ''])),
+              hash: appearanceHash.value
+            })
+          }));
+        }
+        const [svcRes, bmRes, appRes] = await Promise.all(jobs);
         const svcJson = await svcRes.json();
         const bmJson = await bmRes.json();
-        if (svcJson.success && bmJson.success) {
+        const appJson = appRes ? await appRes.json() : { success: true };
+        if (svcJson.success && bmJson.success && appJson.success) {
           servicesHash.value = svcJson.hash || null;
           bookmarksHash.value = bmJson.hash || null;
+          if (appRes) {
+            appearanceHash.value = appJson.hash || null;
+            const saved = appJson.data.values || {};
+            for (const field of appearanceFields) appearanceLoaded[field] = saved[field] || '';
+          }
            showToast(t('toast.saved'));
            refreshPreview();
          } else {
-           showToast(t('toast.saveFailedShort'), 'error');
+           const failed = [svcJson, bmJson, appJson].find((j) => j && !j.success);
+           showToast(t('toast.saveFailed', { msg: (failed && failed.error) || '' }), 'error');
          }
        } catch (err) {
          showToast(t('toast.saveFailed', { msg: err.message }), 'error');
@@ -1035,6 +1069,88 @@ const cmsApp = createApp({
         }
       } catch (err) {
         showToast(t('toast.bookmarksSaveFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    // ---- Homepage appearance ----
+    // Homepage has no theme files: the palette is built into the app and what can
+    // be changed lives in the settings.yaml of the config directory. The editor
+    // writes the visual fields of that file and leaves the rest of it alone.
+    async function loadAppearance() {
+      try {
+        const res = await apiFetch('/api/homepage-settings');
+        const json = await res.json();
+        if (json.success) {
+          const values = json.data.values || {};
+          for (const field of appearanceFields) {
+            appearance[field] = values[field] || '';
+            appearanceLoaded[field] = values[field] || '';
+          }
+          appearanceHash.value = json.hash || null;
+          appearanceMeta.value = json.data;
+          appearanceReady.value = true;
+        }
+      } catch (err) {
+        showToast(t('toast.loadAppearanceFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    // True when the form holds something the file does not. Saving only happens
+    // then, so an ordinary save does not rewrite the file or churn the backups.
+    const appearanceDirty = computed(() =>
+      appearanceFields.some((field) => (appearance[field] || '') !== (appearanceLoaded[field] || ''))
+    );
+
+    const appearancePalette = computed(() => appearanceMeta.value.palette || []);
+    const knownPaletteIds = computed(() => appearancePalette.value.map((c) => c.id));
+
+    // The appearance is read when the tab is opened, not on every page load: the
+    // file is only needed when the user goes looking at it.
+    function openAppearanceTab() {
+      activeTab.value = 'appearance';
+      if (!appearanceReady.value) loadAppearance();
+    }
+
+    // The choices of a field, with the value that is set but not in the list added
+    // to it. A newer Homepage may have values this editor does not know yet; they
+    // are shown instead of being dropped.
+    function appearanceChoices(field) {
+      const list = (appearanceMeta.value.choices && appearanceMeta.value.choices[field]) || [];
+      const current = appearance[field] || '';
+      return current && !list.includes(current) ? [current, ...list] : list;
+    }
+
+    // The label of a choice. The values are Homepage's own names, so they are shown
+    // as they are; only the ones with a clear meaning in this language are
+    // translated.
+    function appearanceChoiceLabel(field, value) {
+      if (!value) return t('appearance.notSet');
+      if (field === 'theme') {
+        return value === 'light' ? t('appearance.themeLight') : t('appearance.themeDark');
+      }
+      return value;
+    }
+
+    async function saveAppearance() {
+      try {
+        const values = {};
+        for (const field of appearanceFields) values[field] = appearance[field] || '';
+        const res = await apiFetch('/api/homepage-settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values, hash: appearanceHash.value })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+        appearanceHash.value = json.hash || null;
+        const saved = json.data.values || values;
+        for (const field of appearanceFields) appearanceLoaded[field] = saved[field] || '';
+        showToast(t('toast.saved'));
+        refreshPreview();
+        return true;
+      } catch (err) {
+        showToast(t('toast.saveFailed', { msg: err.message }), 'error');
+        return false;
       }
     }
 
@@ -1359,6 +1475,8 @@ const cmsApp = createApp({
       editingGroupId, editingItem, editingGroup,
       showBookmarkGroupModal, showBookmarkItemModal,
       editingBookmarkGroupId, editingBookmarkItemId, editingBookmarkGroup, editingBookmarkItem,
+      appearance, appearanceMeta, appearancePalette, knownPaletteIds, appearanceDirty, appearanceReady,
+      appearanceChoices, appearanceChoiceLabel, loadAppearance, saveAppearance, openAppearanceTab,
       movingItem, movingFromGroup, dragOverGroup, backups, toast,
       totalItems, widgetValueLabel, widgetValuePlaceholder,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,
