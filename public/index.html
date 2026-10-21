@@ -291,6 +291,48 @@
       </div>
     </div>
 
+    <!-- Bookmark Group Modal -->
+    <div v-if="showBookmarkGroupModal" class="modal-overlay" @click.self="showBookmarkGroupModal = false">
+      <div class="modal bookmark-group-modal">
+        <h2><i class="mdi mdi-folder-edit"></i> {{ editingBookmarkGroupId ? t('bookmark.groupTitleEdit') : t('bookmark.groupTitleNew') }}</h2>
+        <div class="form-group">
+          <label>{{ t('bookmark.groupName') }}</label>
+          <input id="bookmark-group-name" v-model="editingBookmarkGroup.name" type="text"
+                 :placeholder="t('bookmark.groupNamePlaceholder')" @keyup.enter="saveBookmarkGroup">
+        </div>
+        <div class="modal-actions">
+          <button @click="showBookmarkGroupModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
+          <button @click="saveBookmarkGroup" class="btn btn-primary">{{ t('common.confirm') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bookmark Item Modal -->
+    <div v-if="showBookmarkItemModal" class="modal-overlay" @click.self="showBookmarkItemModal = false">
+      <div class="modal bookmark-item-modal">
+        <h2><i class="mdi mdi-pencil-circle"></i> {{ editingBookmarkItemId ? t('bookmark.titleEdit') : t('bookmark.titleNew') }}</h2>
+        <div class="form-group">
+          <label>{{ t('bookmark.name') }}</label>
+          <input id="bookmark-name" v-model="editingBookmarkItem.name" type="text"
+                 :placeholder="t('bookmark.namePlaceholder')">
+        </div>
+        <div class="form-group">
+          <label>{{ t('bookmark.href') }}</label>
+          <input id="bookmark-href" v-model="editingBookmarkItem.href" type="text"
+                 :placeholder="t('bookmark.hrefPlaceholder')" @keyup.enter="saveBookmarkItem">
+        </div>
+        <div class="form-group">
+          <label>{{ t('bookmark.abbr') }}</label>
+          <input id="bookmark-abbr" v-model="editingBookmarkItem.abbr" type="text"
+                 :placeholder="t('bookmark.abbrPlaceholder')" @keyup.enter="saveBookmarkItem">
+        </div>
+        <div class="modal-actions">
+          <button @click="showBookmarkItemModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
+          <button @click="saveBookmarkItem" class="btn btn-primary">{{ t('common.confirm') }}</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Move Item Modal -->
     <div v-if="showMoveModal" class="modal-overlay" @click.self="showMoveModal = false">
       <div class="modal">

@@ -21,11 +21,15 @@ const cmsApp = createApp({
     const saving = ref(false);
     const showGroupModal = ref(false);
     const showItemModal = ref(false);
+    const showBookmarkGroupModal = ref(false);
+    const showBookmarkItemModal = ref(false);
     const showMoveModal = ref(false);
     const showBackups = ref(false);
     const showSettings = ref(false);
     const editingGroupId = ref(null);
     const editingItemId = ref(null);
+    const editingBookmarkGroupId = ref(null);
+    const editingBookmarkItemId = ref(null);
     const movingItem = ref(null);
     const movingFromGroup = ref(null);
     const dragOverGroup = ref(null);
@@ -420,6 +424,11 @@ const cmsApp = createApp({
       name: '', href: '', description: '', target: '',
       icon: '', iconType: 'mdi', widgetType: 'none', widgetValue: ''
     });
+    const editingBookmarkGroup = reactive({ name: '' });
+    const editingBookmarkItem = reactive({ name: '', href: '', abbr: '' });
+    // The group an edited bookmark belongs to. It is not a form field, so it stays
+    // out of the reactive object the dialog binds to.
+    let bookmarkItemGroupId = null;
 
     // Drag state
     let dragSource = null;
@@ -917,15 +926,29 @@ const cmsApp = createApp({
     function toggleBookmarkGroup(group) { group.collapsed = !group.collapsed; }
 
     function addBookmarkGroup() {
-      const name = prompt(t('bookmark.groupNamePrompt'));
-      if (!name || !name.trim()) return;
-      bookmarkGroups.value.push({ id: uid(), name: name.trim(), collapsed: false, items: [] });
+      editingBookmarkGroupId.value = null;
+      editingBookmarkGroup.name = '';
+      showBookmarkGroupModal.value = true;
     }
 
     function editBookmarkGroup(group) {
-      const name = prompt(t('bookmark.groupNamePromptEdit'), group.name);
-      if (!name || !name.trim()) return;
-      group.name = name.trim();
+      editingBookmarkGroupId.value = group.id;
+      editingBookmarkGroup.name = group.name;
+      showBookmarkGroupModal.value = true;
+    }
+
+    function saveBookmarkGroup() {
+      const name = editingBookmarkGroup.name.trim();
+      if (!name) { showToast(t('bookmark.groupNameRequired'), 'error'); return; }
+      if (editingBookmarkGroupId.value) {
+        const group = bookmarkGroups.value.find(g => g.id === editingBookmarkGroupId.value);
+        if (group) group.name = name;
+      } else {
+        bookmarkGroups.value.push({
+          id: uid(), name, sourceName: name, source: {}, collapsed: false, items: []
+        });
+      }
+      showBookmarkGroupModal.value = false;
     }
 
     function deleteBookmarkGroup(gi) {
@@ -935,27 +958,38 @@ const cmsApp = createApp({
     }
 
     function addBookmarkItem(group) {
-      const name = prompt(t('bookmark.namePrompt'));
-      if (!name || !name.trim()) return;
-      const href = prompt(t('bookmark.hrefPrompt'));
-      if (!href || !href.trim()) return;
-      const abbr = prompt(t('bookmark.abbrPrompt'), name.trim().slice(0, 2).toUpperCase());
-      group.items.push({
-        id: uid(), name: name.trim(),
-        abbr: (abbr || name.trim().slice(0, 2).toUpperCase()).toUpperCase(),
-        href: href.trim()
-      });
+      editingBookmarkItemId.value = null;
+      Object.assign(editingBookmarkItem, { name: '', href: '', abbr: '' });
+      bookmarkItemGroupId = group.id;
+      showBookmarkItemModal.value = true;
     }
 
     function editBookmarkItem(group, item) {
-      const name = prompt(t('bookmark.namePrompt'), item.name);
-      if (!name || !name.trim()) return;
-      const href = prompt(t('bookmark.hrefPrompt'), item.href);
-      if (!href || !href.trim()) return;
-      const abbr = prompt(t('bookmark.abbrPromptShort'), item.abbr);
-      item.name = name.trim();
-      item.href = href.trim();
-      item.abbr = (abbr || '').toUpperCase();
+      editingBookmarkItemId.value = item.id;
+      Object.assign(editingBookmarkItem, { name: item.name, href: item.href, abbr: item.abbr });
+      bookmarkItemGroupId = group.id;
+      showBookmarkItemModal.value = true;
+    }
+
+    function saveBookmarkItem() {
+      const name = editingBookmarkItem.name.trim();
+      if (!name) { showToast(t('bookmark.nameRequired'), 'error'); return; }
+      const href = editingBookmarkItem.href.trim();
+      if (!href) { showToast(t('bookmark.hrefRequired'), 'error'); return; }
+      const group = bookmarkGroups.value.find(g => g.id === bookmarkItemGroupId);
+      if (!group) { showToast(t('item.groupNotFound'), 'error'); return; }
+      const abbr = editingBookmarkItem.abbr.trim().toUpperCase() || name.slice(0, 2).toUpperCase();
+      if (editingBookmarkItemId.value) {
+        const item = group.items.find(i => i.id === editingBookmarkItemId.value);
+        if (item) {
+          item.name = name;
+          item.href = href;
+          item.abbr = abbr;
+        }
+      } else {
+        group.items.push({ id: uid(), name, href, abbr, source: {} });
+      }
+      showBookmarkItemModal.value = false;
     }
 
     function deleteBookmarkItem(group, ii) {
@@ -1323,6 +1357,8 @@ const cmsApp = createApp({
       authState,
       showGroupModal, showItemModal, showMoveModal, showBackups, showSettings,
       editingGroupId, editingItem, editingGroup,
+      showBookmarkGroupModal, showBookmarkItemModal,
+      editingBookmarkGroupId, editingBookmarkItemId, editingBookmarkGroup, editingBookmarkItem,
       movingItem, movingFromGroup, dragOverGroup, backups, toast,
       totalItems, widgetValueLabel, widgetValuePlaceholder,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,
@@ -1336,7 +1372,8 @@ const cmsApp = createApp({
       editorPanelStyle, previewPanelStyle,
       widgetTypeLabel,
       toggleBookmarkGroup, addBookmarkGroup, editBookmarkGroup, deleteBookmarkGroup,
-      addBookmarkItem, editBookmarkItem, deleteBookmarkItem,
+      saveBookmarkGroup,
+      addBookmarkItem, editBookmarkItem, saveBookmarkItem, deleteBookmarkItem,
       // Language
       t, i18n, availableLocales, currentLocaleName, changeLanguage,
       langMenuOpen, toggleLangMenu, pickLanguage,
