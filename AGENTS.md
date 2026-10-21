@@ -20,6 +20,9 @@ HOMEPAGE_BACKUP_PATH    備份目錄（預設 backups/）
 HOMEPAGE_CMS_SETTINGS   編輯器自身設定檔（預設 <專案>/cms-settings.yaml）
 HOMEPAGE_PREVIEW_URL    預覽目標（未設定時於介面設定）
 HOMEPAGE_CMS_PASSWORD   存取密碼（設定後所有 API 都需要它；不放進設定檔）
+HOMEPAGE_CMS_LOCALES_PATH 語系檔目錄（預設 <專案>/locales/）
+HOMEPAGE_CMS_THEMES_PATH  配色方案目錄（預設 <專案>/themes/）
+HOMEPAGE_CMS_LOCALE       介面語言（預設 zh-TW；設定檔有指定時以設定檔為準）
 ```
 
 同一組設定也能在介面的齒輪按鈕裡改，寫進 `cms-settings.yaml`。兩種來源的優先序
@@ -44,9 +47,10 @@ Homepage 的（常是容器掛載點或 NAS 共用資料夾）。舊版的
 npm test
 ```
 
-三組無頭 Chrome 測試，覆蓋折疊與分割線行為、行動版版面、可見範圍量測。
-需要本機有 Chrome，且編輯器正在執行（預設 `http://localhost:3456`，可用
-`APP_URL` 覆寫，Chrome 路徑可用 `CHROME_PATH` 覆寫）。
+六組測試：INI 解析器（純 Node），以及五組無頭 Chrome 測試——折疊與分割線行為、
+行動版版面、可見範圍量測、語系切換、配色方案。需要本機有 Chrome，且編輯器正在
+執行（預設 `http://localhost:3456`，可用 `APP_URL` 覆寫，Chrome 路徑可用
+`CHROME_PATH` 覆寫）。
 
 測試驗證的是**版面行為**，不是實作細節。改動版面時，測試失敗多半代表行為
 真的變了，請先確認是不是預期中的改動。
@@ -63,6 +67,14 @@ npm test
   內嵌樣式的優先級會蓋掉 `.collapsed` 類別，導致折疊時分割線不動。
 - **高度來自實測的可見範圍**，不要用 `100vh` 或 `dvh` 當最終答案。手機瀏覽器
   這兩個值指的是網址列收起時的高版本畫面，會讓畫面底部永遠捲不到。
+- **頂端工具列放不下時先縮標題。** 按鈕是主要操作，不能被擠出畫面；標題用省略號
+  截短（`.topbar-title`），按鈕維持同高同寬——包在容器裡的按鈕要用 flex 容器，
+  否則它不會跟旁邊的按鈕一起被拉高，看起來就是大小不一致。
+- **窄螢幕上多按鈕的欄位用格線排。** 按鈕橫向溢出會掉到別的欄位下面，看起來像壞掉
+  的一塊；寧可兩欄換行，也不要讓它溢出。
+- **版本號不要寫死在前端。** 伺服器從 `package.json` 讀版本與倉庫網址，連同語系與
+  主題一起注入頁面（`window.__META__`）；改了版本只要改 `package.json`，介面就跟著
+  變。倉庫網址也放 `package.json` 的 `repository` 欄位，不要寫在樣式或範本裡。
 - **後端 API 很薄。** 設定檔就是磁碟上的 YAML，沒有一層資料庫要同步。
 - **備份是自動的。** 寫入前一定先複製一份到備份目錄（預設 `backups/`），
   不要手動改流程繞開它。
@@ -80,6 +92,27 @@ npm test
   檔案無法以寫入模式開啟（EPERM），而複製檔案會連屬性一起複製——備份與搬遷都
   會變成下一次寫入的地雷。`writeFileSafe` 先寫暫存檔再 rename 覆蓋，屬性不傳染、
   寫入也變成原子的。
+
+## 語系與配色
+
+介面文字與配色都不寫死在程式裡，而是放在 INI 檔：語系檔在 `locales/`，
+配色檔在 `themes/`，使用者放一個檔案進去就會出現在介面上，不必改程式碼。
+兩個目錄的位置都能用環境變數指定（`HOMEPAGE_CMS_LOCALES_PATH`、
+`HOMEPAGE_CMS_THEMES_PATH`）。
+
+- **介面文字一律走 `t('key')`。** 範本與腳本裡不要出現寫死的中文。新增字串要
+  同時加進四個內建語系檔（`locales/*.ini`），key 名稱要能看出所屬區域，
+  例如 `topbar.save`。缺翻譯會退回繁體中文，再缺才顯示 key 並在 console 警告。
+- **伺服器的錯誤訊息也要翻譯。** 訊息原文寫在 `lib/i18n.js` 的 `ERROR_KEYS`／
+  `ERROR_PATTERNS` 對應到語系檔的 key；回應結構不變，`error` 仍是字串。
+- **顏色一律用 CSS 變數。** `public/style.css` 的 `:root` 只留預設值，實際配色
+  由配色檔的 `[colors]` 決定，key 對應變數名（`bg` → `--bg`）。新增 token 要
+  同時加到 `lib/themes.js` 的 `COLOR_TOKENS` 與每個內建配色檔，否則自訂編輯器
+  看不到那個 token。
+- **內建配色要看得清楚。** 正文與次要文字對背景、卡片背景的對比至少 4.5:1，
+  `tests/verify-themes.mjs` 會檢查。
+- **語系檔與配色檔都用同一個 INI 語法**（`lib/ini.js`）：section、`key = value`、
+  `#` 開頭的註解。沒有行內註解，因為顏色值本身以 `#` 開頭。
 
 ## 規格
 

@@ -44,6 +44,353 @@ const cmsApp = createApp({
     const authState = reactive({ required: false, checked: false, locked: false });
     const toast = reactive({ show: false, msg: '', type: 'success' });
 
+    // ---- Language ----
+    // The server hands the language pack to the page together with the HTML, so the
+    // first render already shows the right language. Switching languages fetches the
+    // new pack and re-renders; nothing else on the page is disturbed.
+    const i18n = reactive({
+      locale: 'zh-TW',
+      available: [],
+      catalog: {},
+      fallback: {}
+    });
+    (function initI18n() {
+      const boot = window.__I18N__ || {};
+      i18n.locale = boot.locale || 'zh-TW';
+      i18n.available = boot.available || [];
+      i18n.catalog = boot.catalog || {};
+      i18n.fallback = boot.fallback || {};
+    })();
+
+    const warnedMissing = new Set();
+
+    // The version and the repository the editor came from. The server puts them in
+    // the page, so the number shown is the number that is running.
+    const meta = reactive({ name: 'HomePageCMS', version: '', repo: '' });
+    (function initMeta() {
+      const boot = window.__META__ || {};
+      meta.name = boot.name || meta.name;
+      meta.version = boot.version || '';
+      meta.repo = boot.repo || '';
+    })();
+
+    // Look up a string. A key the chosen language does not have falls back to the
+    // language the editor ships with, so a half-finished translation still shows a
+    // usable interface.
+    function t(key, vars) {
+      let text;
+      if (i18n.catalog && i18n.catalog[key] != null) {
+        text = i18n.catalog[key];
+      } else if (i18n.fallback && i18n.fallback[key] != null) {
+        text = i18n.fallback[key];
+      } else {
+        if (!warnedMissing.has(key)) {
+          warnedMissing.add(key);
+          console.warn('[i18n] missing translation for', key);
+        }
+        text = key;
+      }
+      if (!vars) return text;
+      return String(text).replace(/\{(\w+)\}/g, (match, name) =>
+        (vars[name] !== undefined && vars[name] !== null ? String(vars[name]) : match));
+    }
+
+    // ---- Colour scheme ----
+    const themes = ref([]);
+    // The server applies the colour scheme to the page before it is sent, so the
+    // first paint is already in the right colours.
+    const currentTheme = ref((window.__THEME__ && window.__THEME__.id) || 'midnight');
+    const colorTokens = ref([]);
+    const optionTokens = ref(['radius', 'shadow']);
+    const showAppearance = ref(false);
+    // The language menu in the top bar unfolds under its button.
+    const langMenuOpen = ref(false);
+    const themeEditor = reactive({
+      open: false,
+      isNew: false,
+      id: '',
+      name: '',
+      colors: {},
+      options: {}
+    });
+    // The custom properties the current scheme set on the document, so a new scheme
+    // can take the old one's values away instead of leaving them behind.
+    const appliedVars = new Set();
+
+    function themeVarsOf(theme) {
+      const vars = {};
+      for (const token of colorTokens.value) {
+        if (theme.colors && theme.colors[token]) vars['--' + token] = theme.colors[token];
+      }
+      for (const token of optionTokens.value) {
+        if (theme.options && theme.options[token]) vars['--' + token] = theme.options[token];
+      }
+      return vars;
+    }
+
+    function applyThemeVars(vars) {
+      const root = document.documentElement;
+      for (const name of appliedVars) {
+        if (!vars || !(name in vars)) root.style.removeProperty(name);
+      }
+      appliedVars.clear();
+      for (const [name, value] of Object.entries(vars || {})) {
+        root.style.setProperty(name, value);
+        appliedVars.add(name);
+      }
+    }
+
+    // The colours shown in the theme list, in the order they appear there.
+    function swatchesOf(theme) {
+      if (!theme || !theme.colors) return [];
+      return ['bg', 'bg-card', 'accent', 'success', 'danger']
+        .map((token) => theme.colors[token])
+        .filter(Boolean);
+    }
+
+    const availableLocales = computed(() => i18n.available);
+    const currentLocaleName = computed(() => {
+      const found = i18n.available.find((l) => l.code === i18n.locale);
+      return found ? found.name : i18n.locale;
+    });
+    const currentThemeName = computed(() => {
+      const found = themes.value.find((th) => th.id === currentTheme.value);
+      return found ? found.name : currentTheme.value;
+    });
+
+    // Saving a preference goes through the same settings file as everything else, so
+    // it survives a restart.
+    async function savePreference(prefs) {
+      const res = await apiFetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prefs)
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+      return json;
+    }
+
+    // Switch language without reloading the page: the new pack arrives as JSON and
+    // every string in the interface is replaced in place.
+    async function changeLanguage(code) {
+      if (!code || code === i18n.locale) return;
+      try {
+        const res = await apiFetch('/api/i18n?locale=' + encodeURIComponent(code));
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+        i18n.catalog = json.data.catalog || {};
+        i18n.fallback = json.data.fallback || {};
+        i18n.available = json.data.available || i18n.available;
+        i18n.locale = json.data.locale || code;
+        document.documentElement.lang = i18n.locale;
+        // The error panel reads the pack from the page, so it follows the language.
+        window.__I18N__ = {
+          locale: i18n.locale,
+          available: i18n.available,
+          catalog: i18n.catalog,
+          fallback: i18n.fallback
+        };
+        await savePreference({ locale: i18n.locale });
+        // The colour schemes carry their display name in the language that is in
+        // effect, so the list is read again now that the language is stored.
+        await loadThemes();
+      } catch (err) {
+        showToast(t('toast.settingsSaveFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    function toggleLangMenu() {
+      langMenuOpen.value = !langMenuOpen.value;
+    }
+
+    async function pickLanguage(code) {
+      langMenuOpen.value = false;
+      await changeLanguage(code);
+    }
+
+    // Clicking anywhere outside the menu closes it again.
+    function onDocumentPointerDown(event) {
+      if (!langMenuOpen.value) return;
+      const menu = document.querySelector('.lang-menu');
+      if (menu && !menu.contains(event.target)) langMenuOpen.value = false;
+    }
+
+    async function loadThemes() {
+      try {
+        const res = await apiFetch('/api/themes');
+        const json = await res.json();
+        if (!json.success) return;
+        themes.value = json.data.themes || [];
+        if (json.data.tokens) colorTokens.value = json.data.tokens;
+        if (json.data.options) optionTokens.value = json.data.options;
+      } catch (err) {
+        // The list is a convenience; the rest of the editor works without it.
+      }
+    }
+
+    // Put a colour scheme on screen. The scheme is stored in the settings file, so
+    // the next reload comes up in the same colours.
+    async function applyThemeById(id) {
+      const theme = themes.value.find((th) => th.id === id);
+      if (!theme) return;
+      currentTheme.value = theme.id;
+      applyThemeVars(themeVarsOf(theme));
+      try {
+        await savePreference({ theme: theme.id });
+      } catch (err) {
+        showToast(t('toast.settingsSaveFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    function openAppearance() {
+      showAppearance.value = true;
+      loadThemes();
+    }
+
+    function editTheme(theme) {
+      themeEditor.open = true;
+      themeEditor.isNew = false;
+      themeEditor.id = theme.id;
+      themeEditor.name = theme.name;
+      themeEditor.colors = { ...theme.colors };
+      themeEditor.options = { ...theme.options };
+    }
+
+    // A new scheme starts from the colours on screen, so "make one like this" is one
+    // click away.
+    function newThemeFromCurrent() {
+      const current = themes.value.find((th) => th.id === currentTheme.value);
+      themeEditor.open = true;
+      themeEditor.isNew = true;
+      themeEditor.id = '';
+      themeEditor.name = current ? current.name : '';
+      themeEditor.colors = { ...(current ? current.colors : {}) };
+      themeEditor.options = { ...(current ? current.options : {}) };
+    }
+
+    function duplicateTheme(theme) {
+      themeEditor.open = true;
+      themeEditor.isNew = true;
+      themeEditor.id = '';
+      themeEditor.name = theme.name;
+      themeEditor.colors = { ...theme.colors };
+      themeEditor.options = { ...theme.options };
+    }
+
+    // The id is the file name, so it has to be a plain name. A name that is already
+    // taken gets a number behind it.
+    function themeSlug(name) {
+      const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'theme';
+      const taken = new Set(themes.value.map((th) => th.id));
+      let id = base;
+      let n = 2;
+      while (taken.has(id)) { id = base + '-' + n; n++; }
+      return id;
+    }
+
+    async function saveTheme() {
+      const name = (themeEditor.name || '').trim();
+      if (!name) { showToast(t('appearance.nameRequired'), 'error'); return; }
+      const id = (themeEditor.id || '').trim() || (themeEditor.isNew ? themeSlug(name) : themeEditor.id);
+      const theme = {
+        id,
+        name,
+        author: '',
+        builtin: false,
+        colors: { ...themeEditor.colors },
+        options: { ...themeEditor.options }
+      };
+      try {
+        const res = await apiFetch('/api/themes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(theme)
+        });
+        const json = await res.json();
+        if (!json.success) {
+          showToast(t('appearance.saveFailed', { msg: json.error }), 'error');
+          return;
+        }
+        themes.value = json.data.themes || [];
+        themeEditor.open = false;
+        showToast(t('appearance.themeSaved', { name }));
+        if (id === currentTheme.value) {
+          const saved = themes.value.find((th) => th.id === id);
+          if (saved) applyThemeVars(themeVarsOf(saved));
+        }
+      } catch (err) {
+        showToast(t('appearance.saveFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    async function removeTheme(theme) {
+      if (!confirm(t('appearance.deleteConfirm', { name: theme.name }))) return;
+      try {
+        const res = await apiFetch('/api/themes/' + encodeURIComponent(theme.id), { method: 'DELETE' });
+        const json = await res.json();
+        if (!json.success) {
+          showToast(t('appearance.saveFailed', { msg: json.error }), 'error');
+          return;
+        }
+        themes.value = json.data.themes || [];
+        showToast(t('appearance.themeDeleted', { name: theme.name }));
+        if (theme.id === currentTheme.value) {
+          const fallback = themes.value.find((th) => !th.error) || themes.value[0];
+          if (fallback) applyThemeById(fallback.id);
+        }
+      } catch (err) {
+        showToast(t('appearance.saveFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    // Download a scheme as an INI file. The file is fetched with the same request
+    // helper as everything else, so it works when the editor is password protected.
+    async function exportTheme(theme) {
+      try {
+        const res = await apiFetch('/api/themes/' + encodeURIComponent(theme.id) + '/export');
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+        const blob = new Blob([json.data.content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = theme.id + '.ini';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast(t('appearance.exported', { name: theme.name }));
+      } catch (err) {
+        showToast(t('appearance.saveFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    async function importThemeFile(event) {
+      const input = event.target;
+      const file = input.files && input.files[0];
+      if (!file) return;
+      try {
+        const content = await file.text();
+        const res = await apiFetch('/api/themes/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+        const json = await res.json();
+        if (!json.success) {
+          showToast(t('appearance.importFailed', { msg: json.error }), 'error');
+          return;
+        }
+        themes.value = json.data.themes || [];
+        showToast(t('appearance.imported', { name: json.data.imported }));
+      } catch (err) {
+        showToast(t('appearance.importFailed', { msg: err.message }), 'error');
+      } finally {
+        input.value = '';
+      }
+    }
+
     // Where the editor reads its config, where it writes backups, and where its own
     // settings live. Read-only, shown in the settings dialog so the operator can confirm
     // the deployment without reading the source.
@@ -61,7 +408,7 @@ const cmsApp = createApp({
     const settingsForm = reactive({
       previewUrl: '', bindAddress: '', port: '',
       configPath: '', backupPath: '', settingsPath: '',
-      protectionEnabled: false, password: ''
+      protectionEnabled: false, password: '', locale: ''
     });
     const showPassword = ref(false);
     // True while the editor has no settings file yet: the setup dialog opens on the
@@ -85,19 +432,19 @@ const cmsApp = createApp({
     // document and let the overlay ask for a URL instead.
     const previewSrc = computed(() => previewUrl.value || 'about:blank');
     const previewSourceLabel = computed(() => ({
-      'settings-file': '編輯器設定檔',
-      'env': '環境變數 HOMEPAGE_PREVIEW_URL',
-      'unset': '尚未設定'
-    })[previewUrlSource.value] || '未知');
+      'settings-file': t('source.previewSettingsFile'),
+      'env': t('source.previewEnv'),
+      'unset': t('source.previewUnset')
+    })[previewUrlSource.value] || t('source.unknown'));
     // Where a setting currently comes from, for the hint under each field.
     function sourceLabel(source) {
       return ({
-        'settings-file': '設定檔',
-        'env': '環境變數',
-        'default': '預設值',
-        'unset': '尚未設定',
-        'none': '未啟用'
-      })[source] || '未知';
+        'settings-file': t('source.settingsFile'),
+        'env': t('source.env'),
+        'default': t('source.default'),
+        'unset': t('source.unset'),
+        'none': t('source.none')
+      })[source] || t('source.unknown');
     }
 
     // Layout: the preview panel keeps a fixed flex-basis while the editor fills whatever
@@ -177,18 +524,18 @@ const cmsApp = createApp({
 
     const widgetValueLabel = computed(() => {
       switch (editingItem.widgetType) {
-        case 'container': return '容器名稱';
-        case 'ping': return 'IP 位址';
-        case 'customapi': return 'API URL';
-        default: return '值';
+        case 'container': return t('item.widgetValueContainer');
+        case 'ping': return t('item.widgetValuePing');
+        case 'customapi': return t('item.widgetValueCustomApi');
+        default: return t('item.widgetValue');
       }
     });
 
     const widgetValuePlaceholder = computed(() => {
       switch (editingItem.widgetType) {
-        case 'container': return '例如：code-server';
-        case 'ping': return '例如：192.168.1.110';
-        case 'customapi': return 'https://.../api/health';
+        case 'container': return t('item.widgetPlaceholderContainer');
+        case 'ping': return t('item.widgetPlaceholderPing');
+        case 'customapi': return t('item.widgetPlaceholderCustomApi');
         default: return '';
       }
     });
@@ -204,8 +551,13 @@ const cmsApp = createApp({
     }
 
     function widgetTypeLabel(type) {
-      const map = { container: '容器', ping: 'Ping', customapi: 'API', none: '無' };
-      return map[type] || '無';
+      const map = {
+        container: t('item.badgeContainer'),
+        ping: t('item.badgePing'),
+        customapi: t('item.badgeCustomApi'),
+        none: t('item.badgeNone')
+      };
+      return map[type] || t('item.badgeNone');
     }
 
     // Load data
@@ -218,7 +570,7 @@ const cmsApp = createApp({
           servicesHash.value = json.hash || null;
         }
       } catch (err) {
-        showToast('載入失敗: ' + err.message, 'error');
+        showToast(t('toast.loadFailed', { msg: err.message }), 'error');
       }
     }
 
@@ -232,7 +584,7 @@ const cmsApp = createApp({
           bookmarksHash.value = json.hash || null;
         }
       } catch (err) {
-        showToast('載入書籤失敗: ' + err.message, 'error');
+        showToast(t('toast.loadBookmarksFailed', { msg: err.message }), 'error');
       }
     }
 
@@ -285,6 +637,8 @@ const cmsApp = createApp({
     async function apiFetch(url, options = {}) {
       const headers = Object.assign({}, options.headers || {});
       if (apiPassword.value) headers['X-CMS-Password'] = apiPassword.value;
+      // The server replies in the language the editor is showing.
+      headers['Accept-Language'] = i18n.locale;
       const res = await fetch(url, Object.assign({}, options, { headers }));
       if (res.status === 401) {
         // The stored password is wrong or gone: forget it and ask again.
@@ -292,7 +646,7 @@ const cmsApp = createApp({
         localStorage.removeItem('hcms-password');
         authState.locked = true;
         showPasswordPrompt.value = true;
-        const err = new Error('需要存取密碼');
+        const err = new Error(t('toast.needPassword'));
         err.unauthorized = true;
         throw err;
       }
@@ -448,13 +802,13 @@ const cmsApp = createApp({
         const json = await res.json();
         if (json.success) {
           servicesHash.value = json.hash || null;
-          showToast('已儲存');
+          showToast(t('toast.saved'));
           refreshPreview();
         } else {
-          showToast('儲存失敗: ' + json.error, 'error');
+          showToast(t('toast.saveFailed', { msg: json.error }), 'error');
         }
       } catch (err) {
-        showToast('儲存失敗: ' + err.message, 'error');
+        showToast(t('toast.saveFailed', { msg: err.message }), 'error');
       }
       saving.value = false;
     }
@@ -479,13 +833,13 @@ const cmsApp = createApp({
         if (svcJson.success && bmJson.success) {
           servicesHash.value = svcJson.hash || null;
           bookmarksHash.value = bmJson.hash || null;
-           showToast('已儲存');
+           showToast(t('toast.saved'));
            refreshPreview();
          } else {
-           showToast('儲存失敗', 'error');
+           showToast(t('toast.saveFailedShort'), 'error');
          }
        } catch (err) {
-         showToast('儲存失敗: ' + err.message, 'error');
+         showToast(t('toast.saveFailed', { msg: err.message }), 'error');
        }
        saving.value = false;
      }
@@ -538,7 +892,7 @@ const cmsApp = createApp({
     }
 
     function saveGroup() {
-      if (!editingGroup.name.trim()) { showToast('請輸入分組名稱', 'error'); return; }
+      if (!editingGroup.name.trim()) { showToast(t('group.nameRequired'), 'error'); return; }
       if (editingGroupId.value) {
         const g = groups.value.find(g => g.id === editingGroupId.value);
         if (g) { g.name = editingGroup.name.trim(); g.colSpan = editingGroup.colSpan; }
@@ -553,7 +907,7 @@ const cmsApp = createApp({
 
     function deleteGroup(gi) {
       const g = groups.value[gi];
-      if (!confirm('確定刪除分組「' + g.name + '」及其 ' + g.items.length + ' 個服務？')) return;
+      if (!confirm(t('group.confirmDelete', { name: g.name, count: g.items.length }))) return;
       groups.value.splice(gi, 1);
     }
 
@@ -563,29 +917,29 @@ const cmsApp = createApp({
     function toggleBookmarkGroup(group) { group.collapsed = !group.collapsed; }
 
     function addBookmarkGroup() {
-      const name = prompt('請輸入書籤分組名稱：');
+      const name = prompt(t('bookmark.groupNamePrompt'));
       if (!name || !name.trim()) return;
       bookmarkGroups.value.push({ id: uid(), name: name.trim(), collapsed: false, items: [] });
     }
 
     function editBookmarkGroup(group) {
-      const name = prompt('請輸入分組名稱：', group.name);
+      const name = prompt(t('bookmark.groupNamePromptEdit'), group.name);
       if (!name || !name.trim()) return;
       group.name = name.trim();
     }
 
     function deleteBookmarkGroup(gi) {
       const g = bookmarkGroups.value[gi];
-      if (!confirm('確定刪除書籤分組「' + g.name + '」？')) return;
+      if (!confirm(t('bookmark.confirmDeleteGroup', { name: g.name }))) return;
       bookmarkGroups.value.splice(gi, 1);
     }
 
     function addBookmarkItem(group) {
-      const name = prompt('請輸入書籤名稱：');
+      const name = prompt(t('bookmark.namePrompt'));
       if (!name || !name.trim()) return;
-      const href = prompt('請輸入連結：');
+      const href = prompt(t('bookmark.hrefPrompt'));
       if (!href || !href.trim()) return;
-      const abbr = prompt('請輸入縮寫（2-3個字元）：', name.trim().slice(0, 2).toUpperCase());
+      const abbr = prompt(t('bookmark.abbrPrompt'), name.trim().slice(0, 2).toUpperCase());
       group.items.push({
         id: uid(), name: name.trim(),
         abbr: (abbr || name.trim().slice(0, 2).toUpperCase()).toUpperCase(),
@@ -594,18 +948,18 @@ const cmsApp = createApp({
     }
 
     function editBookmarkItem(group, item) {
-      const name = prompt('請輸入書籤名稱：', item.name);
+      const name = prompt(t('bookmark.namePrompt'), item.name);
       if (!name || !name.trim()) return;
-      const href = prompt('請輸入連結：', item.href);
+      const href = prompt(t('bookmark.hrefPrompt'), item.href);
       if (!href || !href.trim()) return;
-      const abbr = prompt('請輸入縮寫：', item.abbr);
+      const abbr = prompt(t('bookmark.abbrPromptShort'), item.abbr);
       item.name = name.trim();
       item.href = href.trim();
       item.abbr = (abbr || '').toUpperCase();
     }
 
     function deleteBookmarkItem(group, ii) {
-      if (!confirm('確定刪除書籤「' + group.items[ii].name + '」？')) return;
+      if (!confirm(t('bookmark.confirmDelete', { name: group.items[ii].name }))) return;
       group.items.splice(ii, 1);
     }
 
@@ -641,12 +995,12 @@ const cmsApp = createApp({
         const json = await res.json();
         if (json.success) {
           bookmarksHash.value = json.hash || null;
-          showToast('書籤已儲存');
+          showToast(t('toast.bookmarksSaved'));
         } else {
-          showToast('書籤儲存失敗: ' + json.error, 'error');
+          showToast(t('toast.bookmarksSaveFailed', { msg: json.error }), 'error');
         }
       } catch (err) {
-        showToast('書籤儲存失敗: ' + err.message, 'error');
+        showToast(t('toast.bookmarksSaveFailed', { msg: err.message }), 'error');
       }
     }
 
@@ -673,9 +1027,9 @@ const cmsApp = createApp({
     }
 
     function saveItem() {
-      if (!editingItem.name.trim()) { showToast('請輸入服務名稱', 'error'); return; }
+      if (!editingItem.name.trim()) { showToast(t('item.nameRequired'), 'error'); return; }
       const group = groups.value.find(g => g.id === editingItem._targetGroupId);
-      if (!group) { showToast('找不到目標分組', 'error'); return; }
+      if (!group) { showToast(t('item.groupNotFound'), 'error'); return; }
       if (editingItemId.value) {
         const item = group.items.find(i => i.id === editingItemId.value);
         if (item) {
@@ -699,7 +1053,7 @@ const cmsApp = createApp({
     }
 
     function deleteItem(group, ii) {
-      if (!confirm('確定刪除「' + group.items[ii].name + '」？')) return;
+      if (!confirm(t('item.confirmDelete', { name: group.items[ii].name }))) return;
       group.items.splice(ii, 1);
     }
 
@@ -716,7 +1070,7 @@ const cmsApp = createApp({
       if (idx > -1) movingFromGroup.value.items.splice(idx, 1);
       targetGroup.items.push(movingItem.value);
       showMoveModal.value = false;
-      showToast('已移動到「' + targetGroup.name + '」');
+      showToast(t('toast.moved', { name: targetGroup.name }));
     }
 
     // Drag & Drop
@@ -764,7 +1118,7 @@ const cmsApp = createApp({
       try {
         const res = await apiFetch('/api/settings');
         const json = await res.json();
-        if (!json.success) throw new Error(json.error || '讀取設定失敗');
+        if (!json.success) throw new Error(json.error || t('toast.loadSettingsFailed', { msg: '' }));
         applySettings(json.data);
         // No settings file yet: this is a first visit, so the setup dialog opens.
         if (!json.data.initialized && !showSettings.value) {
@@ -773,7 +1127,7 @@ const cmsApp = createApp({
           showSettings.value = true;
         }
       } catch (err) {
-        showToast('讀取設定失敗: ' + err.message, 'error');
+        showToast(t('toast.loadSettingsFailed', { msg: err.message }), 'error');
       }
     }
 
@@ -808,6 +1162,8 @@ const cmsApp = createApp({
       settingsForm.backupPath = data.backupPath || '';
       settingsForm.settingsPath = data.settingsPath || '';
       settingsForm.protectionEnabled = !!(data.protection && data.protection.enabled);
+      settingsForm.locale = data.locale || i18n.locale;
+      if (data.theme) currentTheme.value = data.theme;
     }
 
     function openSettings() {
@@ -835,20 +1191,20 @@ const cmsApp = createApp({
         });
         const json = await res.json();
         if (!json.success) {
-          showToast('儲存失敗: ' + (json.error || '未知錯誤'), 'error');
+          showToast(t('toast.settingsSaveFailed', { msg: json.error || t('toast.unknownError') }), 'error');
           return;
         }
         applySettings(json.data);
         settingsForm.password = '';
         showSettings.value = false;
         isFirstRun.value = false;
-        showToast('已儲存設定');
+        showToast(t('toast.settingsSaved'));
         refreshPreview();
         // The config directory may have changed, so the services are read again.
         loadServices();
         loadBookmarks();
       } catch (err) {
-        showToast('儲存失敗: ' + err.message, 'error');
+        showToast(t('toast.settingsSaveFailed', { msg: err.message }), 'error');
       }
     }
 
@@ -898,12 +1254,12 @@ const cmsApp = createApp({
         if (json.success) backups.value = json.backups;
         showBackups.value = true;
       } catch (err) {
-        showToast('載入備份失敗', 'error');
+        showToast(t('toast.loadBackupsFailed'), 'error');
       }
     }
 
     async function restoreBackup(filename) {
-      if (!confirm('確定還原備份「' + filename + '」？目前的配置會被覆蓋。')) return;
+      if (!confirm(t('backups.confirmRestore', { name: filename }))) return;
       try {
         const res = await apiFetch('/api/restore', {
           method: 'POST',
@@ -912,16 +1268,16 @@ const cmsApp = createApp({
         });
         const json = await res.json();
         if (json.success) {
-          showToast('已還原');
+          showToast(t('toast.restored'));
           loadServices();
           // Restoring a settings backup changes the preview target, so re-read it.
           loadSettings();
           showBackups.value = false;
         } else {
-          showToast('還原失敗: ' + json.error, 'error');
+          showToast(t('toast.restoreFailed', { msg: json.error }), 'error');
         }
       } catch (err) {
-        showToast('還原失敗: ' + err.message, 'error');
+        showToast(t('toast.restoreFailed', { msg: err.message }), 'error');
       }
     }
 
@@ -932,8 +1288,15 @@ const cmsApp = createApp({
         loadServices();
         loadBookmarks();
       }
+      // The colour schemes are needed for the appearance dialog and for knowing
+      // which scheme is in use.
+      loadThemes().then(() => {
+        const theme = themes.value.find((th) => th.id === currentTheme.value);
+        if (theme) applyThemeVars(themeVarsOf(theme));
+      });
       window.addEventListener('resize', syncViewport);
       window.addEventListener('orientationchange', syncViewport);
+      document.addEventListener('mousedown', onDocumentPointerDown);
       // Mobile URL-bar show/hide does not always fire window resize, and can also arrive
       // as a visual-viewport scroll, so listen for both.
       if (window.visualViewport) {
@@ -945,6 +1308,7 @@ const cmsApp = createApp({
     onUnmounted(() => {
       window.removeEventListener('resize', syncViewport);
       window.removeEventListener('orientationchange', syncViewport);
+      document.removeEventListener('mousedown', onDocumentPointerDown);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', syncViewport);
         window.visualViewport.removeEventListener('scroll', syncViewport);
@@ -972,7 +1336,16 @@ const cmsApp = createApp({
       editorPanelStyle, previewPanelStyle,
       widgetTypeLabel,
       toggleBookmarkGroup, addBookmarkGroup, editBookmarkGroup, deleteBookmarkGroup,
-      addBookmarkItem, editBookmarkItem, deleteBookmarkItem
+      addBookmarkItem, editBookmarkItem, deleteBookmarkItem,
+      // Language
+      t, i18n, availableLocales, currentLocaleName, changeLanguage,
+      langMenuOpen, toggleLangMenu, pickLanguage,
+      meta,
+      // Colour scheme
+      themes, currentTheme, currentThemeName, colorTokens, optionTokens,
+      showAppearance, themeEditor, swatchesOf, openAppearance, applyThemeById,
+      editTheme, duplicateTheme, newThemeFromCurrent, saveTheme, removeTheme,
+      exportTheme, importThemeFile, loadThemes
     };
   }
 });

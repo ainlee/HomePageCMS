@@ -11,21 +11,36 @@
   <div id="app">
     <header class="topbar">
       <div class="topbar-left">
-        <h1><i class="mdi mdi-view-dashboard-edit"></i> Homepage 編輯器</h1>
+        <h1><i class="mdi mdi-view-dashboard-edit"></i> <span class="topbar-title">{{ t('topbar.title') }}</span></h1>
       </div>
       <div class="topbar-right">
-        <button @click="openSettings" class="btn btn-icon btn-secondary" title="設定">
+        <!-- Language: a small menu that unfolds under the button. -->
+        <div class="lang-menu">
+          <button @click="toggleLangMenu" class="btn btn-icon btn-secondary lang-btn" :title="t('topbar.language')">
+            <i class="mdi mdi-translate"></i>
+          </button>
+          <div class="lang-dropdown" :class="{ open: langMenuOpen }">
+            <button v-for="l in availableLocales" :key="l.code" class="lang-item"
+                    :class="{ active: l.code === i18n.locale }" @click="pickLanguage(l.code)">
+              <span class="lang-name">{{ l.name }}</span>
+              <span class="lang-code">{{ l.code }}</span>
+            </button>
+          </div>
+        </div>
+        <button @click="openAppearance" class="btn btn-icon btn-secondary theme-btn" :title="t('topbar.theme')">
+          <i class="mdi mdi-palette"></i>
+        </button>
+        <button @click="openSettings" class="btn btn-icon btn-secondary settings-btn" :title="t('topbar.settings')">
           <i class="mdi mdi-cog"></i>
         </button>
-        <button @click="togglePreview" class="btn btn-secondary">
+        <button @click="togglePreview" class="btn btn-icon btn-secondary preview-toggle-btn" :title="showPreview ? t('topbar.hidePreview') : t('topbar.showPreview')">
           <i class="mdi" :class="showPreview ? 'mdi-eye-off' : 'mdi-eye'"></i>
-          {{ showPreview ? '隱藏預覽' : '顯示預覽' }}
         </button>
-        <button @click="loadBackups" class="btn btn-secondary">
-          <i class="mdi mdi-history"></i> 備份
+        <button @click="loadBackups" class="btn btn-secondary btn-backups" :title="t('topbar.backups')">
+          <i class="mdi mdi-history"></i> <span class="btn-label">{{ t('topbar.backups') }}</span>
         </button>
-        <button @click="saveAll" :disabled="saving" class="btn btn-primary">
-          <i class="mdi mdi-content-save"></i> {{ saving ? '儲存中...' : '儲存' }}
+        <button @click="saveAll" :disabled="saving" class="btn btn-primary btn-save" :title="saving ? t('topbar.saving') : t('topbar.save')">
+          <i class="mdi mdi-content-save"></i> <span class="btn-label">{{ saving ? t('topbar.saving') : t('topbar.save') }}</span>
         </button>
       </div>
     </header>
@@ -35,27 +50,27 @@
         <div class="editor-toolbar">
         <div class="tab-bar">
           <button @click="activeTab = 'services'" class="tab-btn" :class="{ active: activeTab === 'services' }">
-            <i class="mdi mdi-view-dashboard"></i> 服務
+            <i class="mdi mdi-view-dashboard"></i> {{ t('tabs.services') }}
           </button>
           <button @click="activeTab = 'bookmarks'" class="tab-btn" :class="{ active: activeTab === 'bookmarks' }">
-            <i class="mdi mdi-bookmark-multiple"></i> 書籤
+            <i class="mdi mdi-bookmark-multiple"></i> {{ t('tabs.bookmarks') }}
           </button>
         </div>
           <button v-if="activeTab === 'services'" @click="addGroup" class="btn btn-small btn-primary">
-            <i class="mdi mdi-plus"></i> 新增分組
+            <i class="mdi mdi-plus"></i> {{ t('tabs.addGroup') }}
           </button>
           <button v-if="activeTab === 'bookmarks'" @click="addBookmarkGroup" class="btn btn-small btn-primary">
-            <i class="mdi mdi-plus"></i> 新增書籤分組
+            <i class="mdi mdi-plus"></i> {{ t('tabs.addBookmarkGroup') }}
           </button>
-          <span class="stats" v-if="activeTab === 'services'">{{ groups.length }} 組 / {{ totalItems }} 個服務</span>
-          <span class="stats" v-if="activeTab === 'bookmarks'">{{ bookmarkGroups.length }} 組書籤</span>
+          <span class="stats" v-if="activeTab === 'services'">{{ t('tabs.statsServices', { count: groups.length, total: totalItems }) }}</span>
+          <span class="stats" v-if="activeTab === 'bookmarks'">{{ t('tabs.statsBookmarks', { count: bookmarkGroups.length }) }}</span>
         </div>
 
         <div v-if="authState.locked" class="locked-screen">
           <i class="mdi mdi-lock"></i>
-          <p>這個編輯器需要存取密碼才能使用</p>
+          <p>{{ t('auth.locked') }}</p>
           <button @click="showPasswordPrompt = true" class="btn btn-primary">
-            <i class="mdi mdi-key"></i> 輸入密碼
+            <i class="mdi mdi-key"></i> {{ t('auth.enterPassword') }}
           </button>
         </div>
         <div v-else class="groups-list">
@@ -68,10 +83,10 @@
               <span class="group-badge">{{ group.items.length }}</span>
               <span v-if="group.colSpan && group.colSpan > 1" class="group-colspan">col-{{ group.colSpan }}</span>
               <div class="group-actions">
-                <button @click.stop="editGroup(group)" class="btn btn-icon" title="編輯分組">
+                <button @click.stop="editGroup(group)" class="btn btn-icon" :title="t('group.edit')">
                   <i class="mdi mdi-pencil"></i>
                 </button>
-                <button @click.stop="deleteGroup(gi)" class="btn btn-icon btn-danger" title="刪除分組">
+                <button @click.stop="deleteGroup(gi)" class="btn btn-icon btn-danger" :title="t('group.delete')">
                   <i class="mdi mdi-delete"></i>
                 </button>
               </div>
@@ -97,24 +112,24 @@
                   </div>
                   <span class="item-widget-badge" :class="'badge-' + item.widgetType">{{ widgetTypeLabel(item.widgetType) }}</span>
                   <div class="item-actions">
-                    <button @click="editItem(group, item)" class="btn btn-icon" title="編輯">
+                    <button @click="editItem(group, item)" class="btn btn-icon" :title="t('item.edit')">
                       <i class="mdi mdi-pencil"></i>
                     </button>
-                    <button @click="moveItemToGroup(group, item)" class="btn btn-icon" title="移動到別的分組">
+                    <button @click="moveItemToGroup(group, item)" class="btn btn-icon" :title="t('item.move')">
                       <i class="mdi mdi-arrow-right-bold-circle"></i>
                     </button>
-                    <button @click="deleteItem(group, ii)" class="btn btn-icon btn-danger" title="刪除">
+                    <button @click="deleteItem(group, ii)" class="btn btn-icon btn-danger" :title="t('item.delete')">
                       <i class="mdi mdi-delete"></i>
                     </button>
                   </div>
                 </div>
               </div>
               <button @click="addItem(group)" class="btn btn-small btn-secondary add-item-btn">
-                <i class="mdi mdi-plus"></i> 新增服務
+                <i class="mdi mdi-plus"></i> {{ t('item.add') }}
               </button>
             </div>
           </div>
-        
+
 </template>
 
           <template v-if="activeTab === 'bookmarks'">
@@ -124,10 +139,10 @@
                 <span class="group-name" @click="toggleBookmarkGroup(group)">{{ group.name }}</span>
                 <span class="group-badge">{{ group.items.length }}</span>
                 <div class="group-actions">
-                  <button @click.stop="editBookmarkGroup(group)" class="btn btn-icon" title="編輯分組">
+                  <button @click.stop="editBookmarkGroup(group)" class="btn btn-icon" :title="t('group.edit')">
                     <i class="mdi mdi-pencil"></i>
                   </button>
-                  <button @click.stop="deleteBookmarkGroup(gi)" class="btn btn-icon btn-danger" title="刪除分組">
+                  <button @click.stop="deleteBookmarkGroup(gi)" class="btn btn-icon btn-danger" :title="t('group.delete')">
                     <i class="mdi mdi-delete"></i>
                   </button>
                 </div>
@@ -144,17 +159,17 @@
                       <span class="item-desc">{{ item.href }}</span>
                     </div>
                     <div class="item-actions">
-                      <button @click="editBookmarkItem(group, item)" class="btn btn-icon" title="編輯">
+                      <button @click="editBookmarkItem(group, item)" class="btn btn-icon" :title="t('bookmark.edit')">
                         <i class="mdi mdi-pencil"></i>
                       </button>
-                      <button @click="deleteBookmarkItem(group, ii)" class="btn btn-icon btn-danger" title="刪除">
+                      <button @click="deleteBookmarkItem(group, ii)" class="btn btn-icon btn-danger" :title="t('bookmark.delete')">
                         <i class="mdi mdi-delete"></i>
                       </button>
                     </div>
                   </div>
                 </div>
                 <button @click="addBookmarkItem(group)" class="btn btn-small btn-secondary add-item-btn">
-                  <i class="mdi mdi-plus"></i> 新增書籤
+                  <i class="mdi mdi-plus"></i> {{ t('bookmark.add') }}
                 </button>
               </div>
             </div>
@@ -163,7 +178,7 @@
 
       <div v-show="showPreview" class="resizer" 
            @mousedown="startResize" 
-           @touchstart.prevent="startResize"
+           @touchstart="startResize"
            :class="{ resizing: isResizing }">
         <div class="resizer-handle"></div>
       </div>
@@ -172,19 +187,19 @@
            @click.self="previewCollapsed && togglePreviewCollapsed()">
         <div class="preview-header" @click="previewCollapsed && togglePreviewCollapsed()">
           <div class="preview-header-left">
-            <button @click.stop="togglePreviewCollapsed()" class="btn btn-icon" :title="previewCollapsed ? '展開預覽' : '折疊預覽'">
+            <button @click.stop="togglePreviewCollapsed()" class="btn btn-icon" :title="previewCollapsed ? t('preview.expand') : t('preview.collapse')">
               <i class="mdi" :class="previewCollapsed ? (isColumn ? 'mdi-chevron-left' : 'mdi-chevron-up') : (isColumn ? 'mdi-chevron-right' : 'mdi-chevron-down')"></i>
             </button>
-            <span>{{ previewCollapsed ? '展開預覽' : '即時預覽' }}</span>
+            <span>{{ previewCollapsed ? t('preview.expand') : t('preview.live') }}</span>
           </div>
-          <button v-show="!previewCollapsed" @click.stop="refreshPreview" class="btn btn-icon"><i class="mdi mdi-refresh"></i></button>
+          <button v-show="!previewCollapsed" @click.stop="refreshPreview" class="btn btn-icon" :title="t('preview.refresh')"><i class="mdi mdi-refresh"></i></button>
         </div>
         <iframe v-show="!previewCollapsed" :src="previewSrc" class="preview-iframe" :key="previewKey"></iframe>
         <div v-if="!hasPreviewUrl && !previewCollapsed" class="preview-empty">
           <i class="mdi mdi-web-off"></i>
-          <p>尚未設定預覽網址</p>
+          <p>{{ t('preview.notSet') }}</p>
           <button @click.stop="openSettings" class="btn btn-small btn-secondary">
-            <i class="mdi mdi-cog"></i> 前往設定
+            <i class="mdi mdi-cog"></i> {{ t('preview.goSettings') }}
           </button>
         </div>
       </div>
@@ -193,23 +208,23 @@
     <!-- Group Modal -->
     <div v-if="showGroupModal" class="modal-overlay" @click.self="showGroupModal = false">
       <div class="modal">
-        <h2><i class="mdi mdi-folder-edit"></i> {{ editingGroupId ? '編輯分組' : '新增分組' }}</h2>
+        <h2><i class="mdi mdi-folder-edit"></i> {{ editingGroupId ? t('group.titleEdit') : t('group.titleNew') }}</h2>
         <div class="form-group">
-          <label>分組名稱</label>
-          <input v-model="editingGroup.name" type="text" placeholder="例如：遊戲與娛樂">
+          <label>{{ t('group.name') }}</label>
+          <input v-model="editingGroup.name" type="text" :placeholder="t('group.namePlaceholder')">
         </div>
         <div class="form-group">
-          <label>寬度 (col-span)</label>
+          <label>{{ t('group.colSpan') }}</label>
           <select v-model.number="editingGroup.colSpan">
-            <option :value="1">1 欄</option>
-            <option :value="2">2 欄</option>
-            <option :value="3">3 欄</option>
-            <option :value="4">4 欄</option>
+            <option :value="1">{{ t('group.colSpan1') }}</option>
+            <option :value="2">{{ t('group.colSpan2') }}</option>
+            <option :value="3">{{ t('group.colSpan3') }}</option>
+            <option :value="4">{{ t('group.colSpan4') }}</option>
           </select>
         </div>
         <div class="modal-actions">
-          <button @click="showGroupModal = false" class="btn btn-secondary">取消</button>
-          <button @click="saveGroup" class="btn btn-primary">確定</button>
+          <button @click="showGroupModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
+          <button @click="saveGroup" class="btn btn-primary">{{ t('common.confirm') }}</button>
         </div>
       </div>
     </div>
@@ -217,38 +232,38 @@
     <!-- Item Modal -->
     <div v-if="showItemModal" class="modal-overlay" @click.self="showItemModal = false">
       <div class="modal modal-wide">
-        <h2><i class="mdi mdi-pencil-circle"></i> {{ editingItemId ? '編輯服務' : '新增服務' }}</h2>
+        <h2><i class="mdi mdi-pencil-circle"></i> {{ editingItemId ? t('item.titleEdit') : t('item.titleNew') }}</h2>
         <div class="form-grid">
           <div class="form-group">
-            <label>服務名稱</label>
-            <input v-model="editingItem.name" type="text" placeholder="例如：RomM">
+            <label>{{ t('item.name') }}</label>
+            <input v-model="editingItem.name" type="text" :placeholder="t('item.namePlaceholder')">
           </div>
           <div class="form-group">
-            <label>連結 (href)</label>
-            <input v-model="editingItem.href" type="text" placeholder="https://...">
+            <label>{{ t('item.href') }}</label>
+            <input v-model="editingItem.href" type="text" :placeholder="t('item.hrefPlaceholder')">
           </div>
           <div class="form-group">
-            <label>說明</label>
-            <input v-model="editingItem.description" type="text" placeholder="服務說明">
+            <label>{{ t('item.description') }}</label>
+            <input v-model="editingItem.description" type="text" :placeholder="t('item.descriptionPlaceholder')">
           </div>
           <div class="form-group">
-            <label>開啟方式</label>
+            <label>{{ t('item.target') }}</label>
             <select v-model="editingItem.target">
-              <option value="">本頁</option>
-              <option value="_blank">新分頁</option>
+              <option value="">{{ t('item.targetSelf') }}</option>
+              <option value="_blank">{{ t('item.targetBlank') }}</option>
             </select>
           </div>
           <div class="form-group">
-            <label>圖標類型</label>
+            <label>{{ t('item.iconType') }}</label>
             <select v-model="editingItem.iconType">
-              <option value="mdi">MDI 圖標</option>
-              <option value="url">圖片 URL</option>
+              <option value="mdi">{{ t('item.iconMdi') }}</option>
+              <option value="url">{{ t('item.iconUrl') }}</option>
             </select>
           </div>
           <div class="form-group">
-            <label>圖標值</label>
+            <label>{{ t('item.iconValue') }}</label>
             <div class="icon-input-wrap">
-              <input v-model="editingItem.icon" type="text" :placeholder="editingItem.iconType === 'mdi' ? 'mdi-gamepad-variant' : 'https://.../icon.png'">
+              <input v-model="editingItem.icon" type="text" :placeholder="editingItem.iconType === 'mdi' ? t('item.iconValueMdi') : t('item.iconValueUrl')">
               <div class="icon-preview" v-if="editingItem.icon">
                 <i v-if="editingItem.iconType === 'mdi'" class="mdi" :class="editingItem.icon"></i>
                 <img v-else :src="editingItem.icon" @error="editingItem.icon = ''">
@@ -256,12 +271,12 @@
             </div>
           </div>
           <div class="form-group">
-            <label>狀態追蹤</label>
+            <label>{{ t('item.widgetType') }}</label>
             <select v-model="editingItem.widgetType">
-              <option value="none">無</option>
-              <option value="container">本機 Docker 容器</option>
-              <option value="ping">遠端 ICMP Ping</option>
-              <option value="customapi">遠端 HTTP API</option>
+              <option value="none">{{ t('item.widgetNone') }}</option>
+              <option value="container">{{ t('item.widgetContainer') }}</option>
+              <option value="ping">{{ t('item.widgetPing') }}</option>
+              <option value="customapi">{{ t('item.widgetCustomApi') }}</option>
             </select>
           </div>
           <div class="form-group">
@@ -270,8 +285,8 @@
           </div>
         </div>
         <div class="modal-actions">
-          <button @click="showItemModal = false" class="btn btn-secondary">取消</button>
-          <button @click="saveItem" class="btn btn-primary">確定</button>
+          <button @click="showItemModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
+          <button @click="saveItem" class="btn btn-primary">{{ t('common.confirm') }}</button>
         </div>
       </div>
     </div>
@@ -279,14 +294,14 @@
     <!-- Move Item Modal -->
     <div v-if="showMoveModal" class="modal-overlay" @click.self="showMoveModal = false">
       <div class="modal">
-        <h2><i class="mdi mdi-arrow-right-bold-circle"></i> 移動「{{ movingItem?.name }}」到...</h2>
+        <h2><i class="mdi mdi-folder-move"></i> {{ t('move.title', { name: movingItem?.name }) }}</h2>
         <div class="move-targets">
           <button v-for="g in groups" :key="g.id" @click="confirmMove(g)" class="btn btn-move">
             <i class="mdi mdi-folder"></i> {{ g.name }}
           </button>
         </div>
         <div class="modal-actions">
-          <button @click="showMoveModal = false" class="btn btn-secondary">取消</button>
+          <button @click="showMoveModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
         </div>
       </div>
     </div>
@@ -294,18 +309,97 @@
     <!-- Backups Modal -->
     <div v-if="showBackups" class="modal-overlay" @click.self="showBackups = false">
       <div class="modal">
-        <h2><i class="mdi mdi-history"></i> 備份列表</h2>
+        <h2><i class="mdi mdi-history"></i> {{ t('backups.title') }}</h2>
         <div class="backups-list">
           <div v-for="b in backups" :key="b" class="backup-item">
             <span class="backup-name">{{ b }}</span>
             <button @click="restoreBackup(b)" class="btn btn-small btn-secondary">
-              <i class="mdi mdi-restore"></i> 還原
+              <i class="mdi mdi-restore"></i> {{ t('backups.restore') }}
             </button>
           </div>
-          <p v-if="!backups.length" class="no-data">尚無備份</p>
+          <p v-if="!backups.length" class="no-data">{{ t('backups.empty') }}</p>
         </div>
         <div class="modal-actions">
-          <button @click="showBackups = false" class="btn btn-secondary">關閉</button>
+          <button @click="showBackups = false" class="btn btn-secondary">{{ t('backups.close') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Appearance Modal -->
+    <div v-if="showAppearance" class="modal-overlay modal-overlay-top" @click.self="showAppearance = false">
+      <div class="modal modal-wide">
+        <h2><i class="mdi mdi-palette"></i> {{ t('appearance.title') }}</h2>
+        <p class="field-hint">{{ t('appearance.themesHint') }}</p>
+        <div class="theme-list">
+          <div v-for="th in themes" :key="th.id" class="theme-row" :class="{ active: th.id === currentTheme }">
+            <div class="theme-swatches">
+              <span v-for="(color, ci) in swatchesOf(th)" :key="ci" class="theme-swatch" :style="{ background: color }"></span>
+            </div>
+            <div class="theme-info">
+              <span class="theme-name">{{ th.name }}</span>
+              <span class="theme-tags">
+                <span class="theme-tag" v-if="th.id === currentTheme">{{ t('appearance.applied') }}</span>
+                <span class="theme-tag" v-else-if="th.builtin">{{ t('appearance.builtin') }}</span>
+                <span class="theme-tag" v-else>{{ t('appearance.custom') }}</span>
+              </span>
+            </div>
+            <div class="theme-actions">
+              <button v-if="th.id !== currentTheme" @click="applyThemeById(th.id)" class="btn btn-small btn-primary">{{ t('appearance.apply') }}</button>
+              <button @click="editTheme(th)" class="btn btn-small btn-secondary">{{ t('appearance.editTheme') }}</button>
+              <button @click="duplicateTheme(th)" class="btn btn-small btn-secondary">{{ t('appearance.duplicateTheme') }}</button>
+              <button @click="exportTheme(th)" class="btn btn-small btn-secondary">{{ t('appearance.exportTheme') }}</button>
+              <button v-if="!th.builtin" @click="removeTheme(th)" class="btn btn-small btn-danger">{{ t('appearance.deleteTheme') }}</button>
+            </div>
+          </div>
+        </div>
+        <div class="theme-list-footer">
+          <button @click="newThemeFromCurrent" class="btn btn-small btn-secondary">
+            <i class="mdi mdi-plus"></i> {{ t('appearance.newTheme') }}
+          </button>
+          <label class="btn btn-small btn-secondary">
+            <i class="mdi mdi-import"></i> {{ t('appearance.importTheme') }}
+            <input type="file" accept=".ini" class="hidden-file" @change="importThemeFile($event)">
+          </label>
+        </div>
+
+        <!-- Theme editor -->
+        <div v-if="themeEditor.open" class="theme-editor">
+          <h3><i class="mdi mdi-tune"></i> {{ themeEditor.isNew ? t('appearance.newTheme') : t('appearance.editTheme') }}</h3>
+          <div class="form-group">
+            <label>{{ t('appearance.themeName') }}</label>
+            <input id="theme-name-input" v-model="themeEditor.name" type="text" :placeholder="t('appearance.themeNamePlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('appearance.themeId') }}</label>
+            <input v-model="themeEditor.id" type="text" placeholder="my-theme" :disabled="!themeEditor.isNew">
+          </div>
+          <div class="form-group">
+            <label>{{ t('appearance.themeColors') }}</label>
+            <div class="theme-color-grid">
+              <label v-for="token in colorTokens" :key="token" class="theme-color">
+                <input type="color" v-model="themeEditor.colors[token]">
+                <span class="theme-color-label">{{ token }}</span>
+              </label>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>{{ t('appearance.radius') }}</label>
+              <input v-model="themeEditor.options.radius" type="text" placeholder="8px">
+            </div>
+            <div class="form-group">
+              <label>{{ t('appearance.shadow') }}</label>
+              <input v-model="themeEditor.options.shadow" type="text" placeholder="0 2px 8px rgba(0,0,0,0.3)">
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button @click="themeEditor.open = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
+            <button @click="saveTheme" class="btn btn-primary">{{ t('appearance.saveTheme') }}</button>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button @click="showAppearance = false" class="btn btn-secondary">{{ t('appearance.close') }}</button>
         </div>
       </div>
     </div>
@@ -313,101 +407,117 @@
     <!-- Settings Modal -->
     <div v-if="showSettings" class="modal-overlay" @click.self="!isFirstRun && (showSettings = false)">
       <div class="modal modal-wide">
-        <h2><i class="mdi mdi-cog"></i> 設定</h2>
+        <h2><i class="mdi mdi-cog"></i> {{ t('settings.title') }}</h2>
         <p v-if="isFirstRun" class="field-hint setup-intro">
-          第一次使用，先把下面幾項填好就能開始編輯。留空的欄位會使用預設值。
+          {{ t('settings.intro') }}
         </p>
         <div class="form-group">
-          <label>Homepage 訪問網址</label>
-          <input v-model="settingsForm.previewUrl" type="text" :placeholder="runtimeInfo.placeholders.previewUrl">
-          <p class="field-hint">目前生效：{{ previewUrl || '尚未設定' }}（來源：{{ previewSourceLabel }}）</p>
+          <label>{{ t('settings.language') }}</label>
+          <select id="locale-select" v-model="settingsForm.locale" @change="changeLanguage($event.target.value)">
+            <option v-for="l in availableLocales" :key="l.code" :value="l.code">{{ l.name }}</option>
+          </select>
+          <p class="field-hint">{{ t('settings.languageHint', { value: currentLocaleName }) }}</p>
         </div>
         <div class="form-group">
-          <label>監聽位址</label>
+          <label>{{ t('settings.appearance') }}</label>
+          <div class="appearance-row">
+            <span class="appearance-current">{{ currentThemeName }}</span>
+            <button @click="openAppearance" class="btn btn-small btn-secondary open-appearance-btn">{{ t('settings.openAppearance') }}</button>
+          </div>
+          <p class="field-hint">{{ t('settings.appearanceHint', { value: currentThemeName }) }}</p>
+        </div>
+        <div class="form-group">
+          <label>{{ t('settings.previewUrl') }}</label>
+          <input v-model="settingsForm.previewUrl" type="text" :placeholder="runtimeInfo.placeholders.previewUrl">
+          <p class="field-hint">{{ t('settings.previewUrlHint', { value: previewUrl || t('source.unset'), source: previewSourceLabel }) }}</p>
+        </div>
+        <div class="form-group">
+          <label>{{ t('settings.bindAddress') }}</label>
           <input v-model="settingsForm.bindAddress" type="text" :placeholder="runtimeInfo.placeholders.bindAddress">
           <p class="field-hint">
-            目前生效：{{ runtimeInfo.bindAddressEffective }}（來源：{{ sourceLabel(runtimeInfo.bindAddressSource) }}）
+            {{ t('settings.bindAddressHint', { value: runtimeInfo.bindAddressEffective, source: sourceLabel(runtimeInfo.bindAddressSource) }) }}
           </p>
           <p class="field-warning">
             <i class="mdi mdi-alert-outline"></i>
-            綁定 0.0.0.0 等同對所有介面開放：任何能連到這台機器的人都能開啟編輯器、
-            改寫你的 Homepage 設定。請只在信任的網路使用，或設定存取密碼。
+            {{ t('settings.bindAddressWarning') }}
           </p>
         </div>
         <div class="form-group">
-          <label>連接埠</label>
+          <label>{{ t('settings.port') }}</label>
           <input v-model="settingsForm.port" type="text" :placeholder="runtimeInfo.placeholders.port">
           <p class="field-hint">
-            目前生效：{{ runtimeInfo.portEffective }}（來源：{{ sourceLabel(runtimeInfo.portSource) }}）
+            {{ t('settings.portHint', { value: runtimeInfo.portEffective, source: sourceLabel(runtimeInfo.portSource) }) }}
           </p>
         </div>
         <div class="form-group">
-          <label>Homepage 設定檔位置</label>
+          <label>{{ t('settings.configPath') }}</label>
           <input v-model="settingsForm.configPath" type="text" :placeholder="runtimeInfo.placeholders.configPath">
           <p class="field-hint">
-            目前生效：{{ runtimeInfo.configPath }}（來源：{{ sourceLabel(runtimeInfo.configPathSource) }}）
+            {{ t('settings.configPathHint', { value: runtimeInfo.configPath, source: sourceLabel(runtimeInfo.configPathSource) }) }}
           </p>
         </div>
         <div class="form-group">
-          <label>備份位置</label>
+          <label>{{ t('settings.backupPath') }}</label>
           <input v-model="settingsForm.backupPath" type="text" :placeholder="runtimeInfo.placeholders.backupPath">
           <p class="field-hint">
-            目前生效：{{ runtimeInfo.backupPath }}（來源：{{ sourceLabel(runtimeInfo.backupPathSource) }}）
+            {{ t('settings.backupPathHint', { value: runtimeInfo.backupPath, source: sourceLabel(runtimeInfo.backupPathSource) }) }}
           </p>
         </div>
         <div class="form-group">
-          <label>編輯器設定檔位置</label>
+          <label>{{ t('settings.settingsPath') }}</label>
           <input v-model="settingsForm.settingsPath" type="text" :placeholder="runtimeInfo.placeholders.settingsPath">
           <p class="field-hint">
-            目前生效：{{ runtimeInfo.settingsPath }}（來源：{{ sourceLabel(runtimeInfo.settingsPathSource) }}）
+            {{ t('settings.settingsPathHint', { value: runtimeInfo.settingsPath, source: sourceLabel(runtimeInfo.settingsPathSource) }) }}
           </p>
         </div>
         <div class="form-group">
-          <label>存取保護</label>
+          <label>{{ t('settings.protection') }}</label>
           <div class="password-row">
             <input v-model="settingsForm.password" :type="showPassword ? 'text' : 'password'"
-                   :placeholder="runtimeInfo.protection.enabled ? '已設定密碼，留空表示不變更' : '留空表示不變更'"
+                   :placeholder="runtimeInfo.protection.enabled ? t('settings.passwordPlaceholderSet') : t('settings.passwordPlaceholderUnset')"
                    :disabled="runtimeInfo.protection.source === 'env' || !settingsForm.protectionEnabled">
             <!-- The icon shows the state, not the action: a crossed-out eye means the
                  password is hidden, which is how it starts every time. -->
             <button type="button" class="btn btn-icon" @click="showPassword = !showPassword"
-                    :title="showPassword ? '密碼已顯示，點擊隱藏' : '密碼已隱藏，點擊顯示'">
+                    :title="showPassword ? t('settings.showPassword') : t('settings.hidePassword')">
               <i class="mdi" :class="showPassword ? 'mdi-eye' : 'mdi-eye-off'"></i>
             </button>
             <label class="switch"
-                   :title="settingsForm.protectionEnabled ? '存取保護已啟用，所有寫入都需要密碼' : '存取保護未啟用'">
+                   :title="settingsForm.protectionEnabled ? t('settings.protectionOn') : t('settings.protectionOff')">
               <input type="checkbox" v-model="settingsForm.protectionEnabled"
                      :disabled="runtimeInfo.protection.source === 'env'">
               <span class="switch-slider"></span>
             </label>
             <span class="switch-state" :class="settingsForm.protectionEnabled ? 'on' : 'off'">
-              {{ settingsForm.protectionEnabled ? '已啟用' : '未啟用' }}
+              {{ settingsForm.protectionEnabled ? t('settings.enabled') : t('settings.disabled') }}
             </span>
           </div>
           <p class="field-hint">
             <template v-if="runtimeInfo.protection.source === 'env'">
-              已啟用（密碼由環境變數 HOMEPAGE_CMS_PASSWORD 設定）
+              {{ t('settings.protectionEnv') }}
             </template>
             <template v-else-if="runtimeInfo.protection.enabled">
-              已啟用，密碼已儲存（畫面上不會顯示內容）。要更換密碼請在上面的欄位
-              輸入新密碼後儲存。
+              {{ t('settings.protectionStored') }}
             </template>
             <template v-else-if="runtimeInfo.protection.stored">
-              未啟用。已儲存的密碼保留著，開啟開關後仍然生效。
+              {{ t('settings.protectionStoredOff') }}
             </template>
             <template v-else>
-              未啟用——任何能連到這台機器的人都能編輯你的設定。
+              {{ t('settings.protectionNone') }}
             </template>
           </p>
         </div>
         <p v-if="runtimeInfo.restartRequired" class="field-warning">
           <i class="mdi mdi-alert-outline"></i>
-          監聽位址或連接埠的變更需要重新啟動編輯器才會生效。
+          {{ t('settings.restartWarning') }}
         </p>
         <div class="modal-actions">
-          <button v-if="!isFirstRun" @click="showSettings = false" class="btn btn-secondary">取消</button>
-          <button v-else @click="skipSetup" class="btn btn-secondary">稍後再設定</button>
-          <button @click="saveSettings" class="btn btn-primary">儲存</button>
+          <a class="modal-brand" :href="meta.repo" target="_blank" rel="noopener noreferrer" :title="t('settings.repoLink')">
+            {{ meta.name }} <span class="modal-version">v{{ meta.version }}</span>
+          </a>
+          <button v-if="!isFirstRun" @click="showSettings = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
+          <button v-else @click="skipSetup" class="btn btn-secondary">{{ t('settings.later') }}</button>
+          <button @click="saveSettings" class="btn btn-primary">{{ t('settings.save') }}</button>
         </div>
       </div>
     </div>
@@ -415,15 +525,15 @@
     <!-- Password Modal -->
     <div v-if="showPasswordPrompt" class="modal-overlay">
       <div class="modal">
-        <h2><i class="mdi mdi-lock"></i> 需要存取密碼</h2>
+        <h2><i class="mdi mdi-lock"></i> {{ t('auth.title') }}</h2>
         <div class="form-group">
-          <label>密碼</label>
-          <input v-model="passwordInput" type="password" placeholder="請輸入密碼" @keyup.enter="submitPassword">
-          <p class="field-hint">密碼由啟動編輯器時的環境變數 HOMEPAGE_CMS_PASSWORD 決定。</p>
+          <label>{{ t('auth.password') }}</label>
+          <input v-model="passwordInput" type="password" :placeholder="t('auth.passwordPlaceholder')" @keyup.enter="submitPassword">
+          <p class="field-hint">{{ t('auth.passwordHint') }}</p>
         </div>
         <div class="modal-actions">
-          <button @click="dismissPasswordPrompt" class="btn btn-secondary">取消</button>
-          <button @click="submitPassword" class="btn btn-primary">確定</button>
+          <button @click="dismissPasswordPrompt" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
+          <button @click="submitPassword" class="btn btn-primary">{{ t('common.confirm') }}</button>
         </div>
       </div>
     </div>
@@ -442,21 +552,31 @@
     // what happened instead, and point at the usual cause: a browser holding an old
     // copy of the template next to a new copy of the script.
     (function () {
+      // The server hands the language pack to the page before this runs, so the error
+      // panel speaks the same language as the rest of the editor.
+      window.__t = function (key, fallback) {
+        var boot = window.__I18N__ || {};
+        var catalog = boot.catalog || {};
+        var fallbackCatalog = boot.fallback || {};
+        if (catalog[key] != null) return catalog[key];
+        if (fallbackCatalog[key] != null) return fallbackCatalog[key];
+        return fallback || key;
+      };
       window.__fatal = function (message) {
         if (document.querySelector('.fatal-error')) return;
         var box = document.createElement('div');
         box.className = 'fatal-error';
         var title = document.createElement('h2');
-        title.textContent = '編輯器發生錯誤';
+        title.textContent = window.__t('fatal.title', '編輯器發生錯誤');
         var detail = document.createElement('p');
         detail.className = 'fatal-detail';
         detail.textContent = String(message);
         var hint = document.createElement('p');
         hint.className = 'fatal-hint';
-        hint.textContent = '通常是瀏覽器快取了舊版檔案。請按 Ctrl+F5 強制重新整理。';
+        hint.textContent = window.__t('fatal.hint', '通常是瀏覽器快取了舊版檔案。請按 Ctrl+F5 強制重新整理。');
         var button = document.createElement('button');
         button.className = 'btn btn-primary';
-        button.textContent = '重新載入';
+        button.textContent = window.__t('fatal.reload', '重新載入');
         button.addEventListener('click', function () { location.reload(); });
         box.appendChild(title);
         box.appendChild(detail);
@@ -464,9 +584,9 @@
         box.appendChild(button);
         document.body.appendChild(box);
       };
-      window.addEventListener('error', function (e) { window.__fatal(e.message || '未知錯誤'); });
+      window.addEventListener('error', function (e) { window.__fatal(e.message || window.__t('fatal.unknown', '未知錯誤')); });
       window.addEventListener('unhandledrejection', function (e) {
-        window.__fatal((e.reason && e.reason.message) || '未知錯誤');
+        window.__fatal((e.reason && e.reason.message) || window.__t('fatal.unknown', '未知錯誤'));
       });
     })();
   </script>

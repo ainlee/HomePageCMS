@@ -7,8 +7,13 @@
   --text-dim: #8b8fa3;
   --accent: #6c5ce7;
   --accent-hover: #7c6ef0;
+  /* The colour of the text on an accent-filled button. Bright accents need dark
+     text, so it is a token of its own instead of a fixed white. */
+  --accent-text: #ffffff;
   --danger: #e74c3c;
   --success: #2ecc71;
+  --info: #3498db;
+  --api: #9b59b6;
   --radius: 8px;
   --shadow: 0 2px 8px rgba(0,0,0,0.3);
   /* Height of the area the user can actually see. Mobile browsers resolve 100vh to the
@@ -67,7 +72,69 @@ body {
 
 .topbar h1 i { color: var(--accent); }
 
+/* The title gives way first when the bar is too narrow: the buttons are the part
+   that has to stay usable. */
+.topbar-left { min-width: 0; }
+.topbar h1 { min-width: 0; }
+.topbar h1 i { flex-shrink: 0; }
+.topbar-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .topbar-right { display: flex; gap: 8px; }
+
+/* Language menu in the top bar: a small list that unfolds under its button.
+   The wrapper is a flex box so the button inside stretches to the same height as
+   the buttons next to it - a button in a plain wrapper would stay its own height
+   and sit next to taller buttons. */
+.lang-menu { position: relative; display: flex; }
+
+.lang-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 30;
+  /* The menu unfolds instead of appearing out of nowhere. */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+}
+
+.lang-dropdown.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.lang-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lang-item:hover { background: var(--bg-hover); }
+.lang-item.active { color: var(--accent); }
+.lang-code { font-size: 11px; color: var(--text-dim); font-family: monospace; }
 
 /* Buttons */
 .btn {
@@ -88,7 +155,7 @@ body {
 .btn:hover { background: var(--bg-hover); border-color: var(--accent); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .btn-primary:hover { background: var(--accent-hover); }
 
 .btn-secondary { background: var(--bg-card); }
@@ -149,7 +216,7 @@ body {
   user-select: none;
 }
 
-.group-header:hover { background: rgba(108,92,231,0.1); }
+.group-header:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 
 .drag-handle { cursor: grab; color: var(--text-dim); font-size: 16px; }
 .drag-handle:active { cursor: grabbing; }
@@ -217,9 +284,9 @@ body {
   border-radius: 4px;
   flex-shrink: 0;
 }
-.badge-container { background: rgba(46,204,113,0.15); color: var(--success); }
-.badge-ping { background: rgba(52,152,219,0.15); color: #3498db; }
-.badge-customapi { background: rgba(155,89,182,0.15); color: #9b59b6; }
+.badge-container { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+.badge-ping { background: color-mix(in srgb, var(--info) 15%, transparent); color: var(--info); }
+.badge-customapi { background: color-mix(in srgb, var(--api) 15%, transparent); color: var(--api); }
 .badge-none { background: transparent; color: var(--text-dim); }
 
 .item-actions { display: flex; gap: 2px; flex-shrink: 0; }
@@ -373,7 +440,9 @@ body {
   width: 100%;
   height: 100%;
   border-radius: 11px;
-  background: #3a3f4c;
+  /* The off-state track is a mix of the text colour and the card colour, so it reads
+     as a grey track on a dark card and as a grey track on a light one. */
+  background: color-mix(in srgb, var(--text) 22%, var(--bg-card));
   transition: background 0.2s;
 }
 
@@ -437,6 +506,9 @@ body {
   justify-content: center;
   z-index: 1000;
 }
+
+/* The appearance dialog opens on top of the settings dialog it was opened from. */
+.modal-overlay-top { z-index: 1100; }
 
 .modal {
   background: var(--bg-card);
@@ -526,6 +598,21 @@ body {
   background: var(--bg-card);
   border-top: 1px solid var(--border);
 }
+
+/* The project name and version sit at the left of the action row; the buttons stay
+   on the right. */
+.modal-brand {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.modal-brand:hover { color: var(--accent); }
+.modal-version { font-family: monospace; }
 
 /* Move Modal */
 .move-targets { display: flex; flex-direction: column; gap: 6px; }
@@ -671,22 +758,37 @@ body {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 8px 4px;
-  gap: 6px;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
+  padding: 12px 4px;
+  gap: 10px;
+  /* The strip itself stays horizontal; only the label is written vertically. Making the
+     whole header vertical put the chevron and the label side by side inside a 44px
+     column, so the text had to shrink to 10px and was clipped at both edges. */
+  writing-mode: horizontal-tb;
   border-bottom: none;
   border-right: 1px solid var(--border);
 }
 
 .preview-panel.collapsed .preview-header-left {
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
   align-items: center;
 }
 
+/* The collapsed strip keeps a round handle so the chevron reads as the thing you
+   drag the panel open with, instead of a rectangle squeezed into the corner. */
+.preview-panel.collapsed .preview-header-left button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 16px;
+}
+
 .preview-panel.collapsed .preview-header-left span {
-  font-size: 10px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  white-space: nowrap;
   writing-mode: vertical-rl;
   text-orientation: mixed;
   color: var(--text-dim);
@@ -695,6 +797,101 @@ body {
 .preview-panel.collapsed:hover .preview-header-left span {
   color: var(--text);
 }
+
+/* Appearance dialog: the colour schemes and the theme editor. */
+.theme-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.theme-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.theme-row.active { border-color: var(--accent); }
+
+.theme-swatches { display: flex; gap: 4px; flex-shrink: 0; }
+.theme-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.theme-info {
+  flex: 1;
+  min-width: 0;
+  /* The name and the tag sit on one line: there is room for them next to each
+     other, and a tag on a line of its own looked like the name had wrapped. */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.theme-name {
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.theme-tags { display: flex; gap: 6px; flex-shrink: 0; }
+.theme-tag {
+  font-size: 10px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.theme-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.theme-list-footer { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.hidden-file { display: none; }
+
+.theme-editor {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.theme-editor h3 {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.theme-color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.theme-color { display: flex; align-items: center; gap: 8px; }
+.theme-color input[type="color"] {
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+.theme-color-label { font-size: 11px; color: var(--text-dim); font-family: monospace; }
+.appearance-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.appearance-current { font-size: 13px; }
 
 /* Responsive: mobile portrait */
 @media (max-width: 768px) {
@@ -748,14 +945,27 @@ body {
     gap: 6px;
   }
 
+  /* The horizontal strip is only 38px tall, so the round handle has to be smaller
+     than the desktop one or the header no longer fits the strip. */
+  .preview-panel.collapsed .preview-header-left button {
+    width: 26px;
+    height: 26px;
+    font-size: 14px;
+  }
+
   .preview-panel.collapsed .preview-header-left span {
     font-size: 11px;
+    letter-spacing: normal;
     writing-mode: horizontal-tb;
   }
 
   .topbar {
     padding: 8px 12px;
   }
+
+  /* On a phone the bar only has room for icons; the names live in the tooltips. */
+  .topbar .btn-icon { padding: 4px 6px; font-size: 14px; }
+  .topbar .btn-backups .btn-label { display: none; }
 
   .topbar h1 {
     font-size: 15px;
@@ -825,6 +1035,18 @@ body {
     width: 95vw;
     padding: 16px;
   }
+
+  .theme-row { flex-wrap: wrap; }
+  /* The buttons of a scheme go two to a row, so they stay inside the scheme instead
+     of running under the colour swatches. */
+  .theme-actions {
+    order: 3;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  .theme-actions .btn { width: 100%; justify-content: center; }
 
   .form-grid {
     grid-template-columns: 1fr;

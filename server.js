@@ -4,6 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 const crypto = require('crypto');
+const i18n = require('./lib/i18n');
+const themeLib = require('./lib/themes');
+const { parseIni } = require('./lib/ini');
+// The version and the repository come from the package file, so the version in the
+// interface is always the version that is running.
+const pkg = require('./package.json');
 
 const app = express();
 const PROJECT_DIR = __dirname;
@@ -17,6 +23,11 @@ const DEFAULT_BIND_ADDRESS = '127.0.0.1';
 const DEFAULT_CONFIG_DIR = path.join(PROJECT_DIR, 'config');
 const DEFAULT_BACKUP_DIR = path.join(PROJECT_DIR, 'backups');
 const DEFAULT_SETTINGS_FILE = path.join(PROJECT_DIR, 'cms-settings.yaml');
+// The language packs and the colour schemes live in their own directories, next to
+// the editor, so a user can add their own file without touching the Homepage config.
+const DEFAULT_LOCALES_DIR = path.join(PROJECT_DIR, 'locales');
+const DEFAULT_THEMES_DIR = path.join(PROJECT_DIR, 'themes');
+const DEFAULT_THEME = 'midnight';
 // Homepage's own default port. It is the suggestion shown in the setup form, not a
 // value the editor uses on its own: a fresh install has no Homepage to point at.
 const SUGGESTED_PREVIEW_URL = 'http://localhost:3000';
@@ -26,6 +37,10 @@ const SUGGESTED_PREVIEW_URL = 'http://localhost:3000';
 const BOOTSTRAP_FILE = process.env.HOMEPAGE_CMS_SETTINGS || DEFAULT_SETTINGS_FILE;
 
 app.use(express.json({ limit: '10mb' }));
+// The page is served with the current language and colour scheme already applied,
+// so a reload does not show the default dark theme or the wrong language first.
+app.get('/', renderIndex);
+app.get('/index.html', renderIndex);
 // The editor is a single page made of a hand-written template and a hand-written
 // script. A browser that keeps an old copy of one of them and a new copy of the other
 // makes Vue render with bindings that no longer exist, which kills the whole page.
@@ -51,6 +66,9 @@ const ENV_CONFIG_PATH = (process.env.HOMEPAGE_CONFIG_PATH || '').trim();
 const ENV_BACKUP_PATH = (process.env.HOMEPAGE_BACKUP_PATH || '').trim();
 const ENV_PREVIEW_URL = (process.env.HOMEPAGE_PREVIEW_URL || '').trim();
 const ENV_PASSWORD = (process.env.HOMEPAGE_CMS_PASSWORD || '').trim();
+const ENV_LOCALES_PATH = (process.env.HOMEPAGE_CMS_LOCALES_PATH || '').trim();
+const ENV_THEMES_PATH = (process.env.HOMEPAGE_CMS_THEMES_PATH || '').trim();
+const ENV_LOCALE = (process.env.HOMEPAGE_CMS_LOCALE || '').trim();
 
 // The bootstrap file is where the editor looks for its settings. When the settings
 // live somewhere else, this file only holds a pointer to them.
@@ -146,6 +164,90 @@ function portSetting() {
   return resolveDeploymentSetting('port', ENV_PORT, String(DEFAULT_PORT));
 }
 
+// Where the language packs live. A path, so the environment variable wins.
+function localesDirSetting() {
+  const r = resolveDeploymentSetting('localesPath', ENV_LOCALES_PATH, DEFAULT_LOCALES_DIR);
+  return { value: asAbsolutePath(r.value), source: r.source };
+}
+
+// Where the colour schemes live. A path, so the environment variable wins.
+function themesDirSetting() {
+  const r = resolveDeploymentSetting('themesPath', ENV_THEMES_PATH, DEFAULT_THEMES_DIR);
+  return { value: asAbsolutePath(r.value), source: r.source };
+}
+
+// The interface language. The settings file wins over the environment: choosing a
+// language in the interface is a deliberate act.
+function localeSetting() {
+  return resolveUserSetting('locale', ENV_LOCALE, i18n.DEFAULT_LOCALE);
+}
+
+// The colour scheme. Same rule: what the user picked wins.
+function themeSetting() {
+  return resolveUserSetting('theme', '', DEFAULT_THEME);
+}
+
+// The catalogue of one language, or of the language in effect.
+function catalogFor(code) {
+  return i18n.localePayload(localesDirSetting().value, code || localeSetting().value).catalog;
+}
+
+// Every colour scheme, with the display name the current language uses.
+function themeList() {
+  const catalog = catalogFor(localeSetting().value);
+  return themeLib.listThemes(themesDirSetting().value).map((theme) => ({
+    ...theme,
+    name: catalog['themes.' + theme.id] || theme.name
+  }));
+}
+
+// The colour scheme in effect.
+function activeTheme() {
+  const list = themeList();
+  const wanted = themeSetting().value;
+  return list.find((t) => t.id === wanted && !t.error)
+    || list.find((t) => t.id === DEFAULT_THEME && !t.error)
+    || list.find((t) => !t.error)
+    || null;
+}
+
+// JSON inside a <script> tag must not be able to close the tag.
+function safeJson(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
+// The page is rendered with the language and the colour scheme already applied, so a
+// reload shows the right theme straight away instead of flashing the default one.
+function renderIndex(req, res) {
+  const file = path.join(PROJECT_DIR, 'public', 'index.html');
+  let html;
+  try {
+    html = fs.readFileSync(file, 'utf8');
+  } catch (err) {
+    return res.status(500).type('text/plain').send('Could not read index.html: ' + err.message);
+  }
+  const payload = i18n.localePayload(localesDirSetting().value, localeSetting().value);
+  const theme = activeTheme();
+  const vars = theme ? themeLib.themeVars(theme) : {};
+  const styleBlock = '<style id="hcms-theme">:root{' +
+    Object.entries(vars).map(([name, value]) => name + ':' + value).join(';') + '}</style>';
+  html = html.replace(
+    '<link rel="stylesheet" href="style.css">',
+    '<link rel="stylesheet" href="style.css">\n    ' + styleBlock
+  );
+  html = html.replace('<html lang="zh-TW">', '<html lang="' + payload.locale + '">');
+  const boot = '<script>window.__I18N__=' + safeJson(payload) + ';window.__THEME__=' +
+    safeJson({ id: theme ? theme.id : '', name: theme ? theme.name : '', vars }) +
+    ';window.__META__=' + safeJson({
+      name: 'HomePageCMS',
+      version: pkg.version,
+      repo: (pkg.repository && pkg.repository.url) || ''
+    }) + ';</script>';
+  html = html.replace('<script src="app.js"></script>', boot + '\n  <script src="app.js"></script>');
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('html').send(html);
+}
+
 // The password may come from the environment or from the settings file, where it is
 // stored as a hash.
 function protectionSetting() {
@@ -213,6 +315,8 @@ function settingsPayload() {
   const protection = protectionSetting();
   const file = readCmsSettings();
   const fileValue = (key) => (typeof file[key] === 'string' && file[key].trim() ? file[key].trim() : null);
+  const locale = localeSetting();
+  const theme = themeSetting();
   return {
     initialized: settingsExist(),
     previewUrl: preview.value,
@@ -230,6 +334,14 @@ function settingsPayload() {
     backupPathSource: backup.source,
     settingsPath: settingsPath.value,
     settingsPathSource: settingsPath.source,
+    // The interface language and the colour scheme are user preferences, so they
+    // come from the settings file first.
+    locale: locale.value,
+    localeSource: locale.source,
+    theme: theme.value,
+    themeSource: theme.source,
+    localesDir: localesDirSetting().value,
+    themesDir: themesDirSetting().value,
     protection: {
       enabled: protection.enabled,
       source: protection.source,
@@ -341,6 +453,18 @@ function passwordMatches(candidate) {
 }
 
 app.use('/api', (req, res, next) => {
+  // The browser tells the server which language it is showing, so the messages that
+  // come back are in the same language.
+  const requested = (req.query && typeof req.query.locale === 'string' ? req.query.locale : '').trim()
+    || (req.get('Accept-Language') || '').split(',')[0].split(';')[0].trim();
+  const catalog = catalogFor(requested || localeSetting().value);
+  const send = res.json.bind(res);
+  res.json = (payload) => {
+    if (payload && typeof payload === 'object' && typeof payload.error === 'string') {
+      payload.error = i18n.localizeMessage(catalog, payload.error);
+    }
+    return send(payload);
+  };
   if (req.path === '/auth') return next();
   if (!protectionSetting().enabled) return next();
   const header = req.get('X-CMS-Password') || '';
@@ -537,6 +661,35 @@ app.put('/api/settings', (req, res) => {
     }
 
     const currentPath = settingsFilePath();
+    // The interface language and the colour scheme. Both are user preferences, so
+    // they are stored in the settings file and survive a restart.
+    if (typeof body.locale === 'string') {
+      const value = body.locale.trim();
+      if (value) {
+        const known = i18n.listLocales(localesDirSetting().value)
+          .some((l) => l.code === value && !l.error);
+        if (!known) {
+          return res.status(400).json({ success: false, error: '找不到語系「' + value + '」' });
+        }
+        next.locale = value;
+      } else {
+        delete next.locale;
+      }
+    }
+
+    if (typeof body.theme === 'string') {
+      const value = body.theme.trim();
+      if (value) {
+        const known = themeList().some((t) => t.id === value && !t.error);
+        if (!known) {
+          return res.status(400).json({ success: false, error: '找不到主題「' + value + '」' });
+        }
+        next.theme = value;
+      } else {
+        delete next.theme;
+      }
+    }
+
     // The pointer to the settings file lives in the bootstrap file, not in the
     // settings themselves.
     delete next.settingsPath;
@@ -555,6 +708,109 @@ app.put('/api/settings', (req, res) => {
     ensureConfigFiles();
     ensureBackupDir();
     res.json({ success: true, data: settingsPayload() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/i18n - the language packs in the directory and the catalogue of one of them
+app.get('/api/i18n', (req, res) => {
+  const code = String((req.query && req.query.locale) || localeSetting().value || '').trim();
+  res.json({ success: true, data: i18n.localePayload(localesDirSetting().value, code) });
+});
+
+// GET /api/themes - every colour scheme, built-in and user-made
+app.get('/api/themes', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      themes: themeList(),
+      tokens: themeLib.COLOR_TOKENS,
+      options: themeLib.OPTION_TOKENS
+    }
+  });
+});
+
+// GET /api/themes/:id/export - the scheme as INI text, so it can be shared
+app.get('/api/themes/:id/export', (req, res) => {
+  const id = String(req.params.id || '').trim();
+  const file = path.join(themesDirSetting().value, id + '.ini');
+  if (!themeLib.isValidId(id) || !fs.existsSync(file)) {
+    return res.status(404).json({ success: false, error: '找不到主題「' + id + '」' });
+  }
+  res.json({ success: true, data: { id, content: fs.readFileSync(file, 'utf8') } });
+});
+
+// POST /api/themes/import - read an INI file the user picked and store it
+app.post('/api/themes/import', (req, res) => {
+  try {
+    const content = String((req.body && req.body.content) || '');
+    if (!content.trim()) {
+      return res.status(400).json({ success: false, error: '主題格式不正確: 檔案是空的' });
+    }
+    const parsed = parseIni(content, 'imported.ini');
+    const meta = parsed.sections.meta || {};
+    const theme = {
+      id: String(meta.id || '').trim(),
+      name: String(meta.name || meta.id || '').trim(),
+      author: String(meta.author || '').trim(),
+      builtin: false,
+      colors: parsed.sections.colors || {},
+      options: parsed.sections.options || {}
+    };
+    const problems = themeLib.validateTheme(theme);
+    if (problems.length) {
+      return res.status(400).json({ success: false, error: '主題格式不正確: ' + problems.join('; ') });
+    }
+    themeLib.writeThemeFile(themesDirSetting().value, theme);
+    res.json({ success: true, data: { themes: themeList(), imported: theme.name } });
+  } catch (err) {
+    res.status(400).json({ success: false, error: '主題格式不正確: ' + err.message });
+  }
+});
+
+// POST /api/themes - save a colour scheme as themes/<id>.ini
+app.post('/api/themes', (req, res) => {
+  try {
+    const body = req.body || {};
+    const theme = {
+      id: String(body.id || '').trim(),
+      name: String(body.name || '').trim(),
+      author: String(body.author || '').trim(),
+      builtin: false,
+      colors: body.colors || {},
+      options: body.options || {}
+    };
+    const problems = themeLib.validateTheme(theme);
+    if (problems.length) {
+      return res.status(400).json({ success: false, error: '主題格式不正確: ' + problems.join('; ') });
+    }
+    const dir = themesDirSetting().value;
+    const existing = themeLib.readThemeFile(dir, theme.id);
+    if (existing && existing.builtin) {
+      return res.status(400).json({ success: false, error: '內建主題不能覆寫或刪除，請複製成自訂主題後修改' });
+    }
+    themeLib.writeThemeFile(dir, theme);
+    res.json({ success: true, data: { themes: themeList() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/themes/:id - remove a colour scheme the user made
+app.delete('/api/themes/:id', (req, res) => {
+  try {
+    const dir = themesDirSetting().value;
+    const id = String(req.params.id || '').trim();
+    const existing = themeLib.readThemeFile(dir, id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: '找不到主題「' + id + '」' });
+    }
+    if (existing.builtin) {
+      return res.status(400).json({ success: false, error: '內建主題不能覆寫或刪除，請複製成自訂主題後修改' });
+    }
+    fs.unlinkSync(path.join(dir, id + '.ini'));
+    res.json({ success: true, data: { themes: themeList() } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

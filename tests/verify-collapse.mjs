@@ -152,14 +152,15 @@ check('desktop: dragging the divider reopens a collapsed preview',
   `collapsed=${d2.collapsed} preview.w=${d2.preview.w}px`);
 
 // 5) hide/show preview from the topbar must still give the editor the full width
-// The topbar button is found by its visible label, not by position: adding a button
-// there (the runtime settings gear) must not change which control this exercises.
-const topbarBtn = (label) => `(() => {
-  const b = [...document.querySelectorAll('.topbar-right .btn')].find(x => x.textContent.includes('${label}'));
+// The topbar button is found by its eye icon, not by position: adding a button there
+// (the runtime settings gear) must not change which control this exercises. The button
+// carries no words any more, so the icon is what tells the two states apart.
+const topbarBtn = (icon) => `(() => {
+  const b = [...document.querySelectorAll('.topbar-right .btn')].find(x => x.querySelector('.mdi-${icon}'));
   if (b) b.click();
   return !!b;
 })()`;
-await evalJson(cdp, sessionId, topbarBtn('隱藏預覽'));
+await evalJson(cdp, sessionId, topbarBtn('eye-off'));
 await sleep(450);
 const h1 = await geom();
 check('desktop: hiding the preview gives the editor full width',
@@ -167,7 +168,7 @@ check('desktop: hiding the preview gives the editor full width',
   h1.preview.w === 0 && h1.resizer.w === 0 && h1.editor.w >= h1.main.w - 2,
   `editor.w=${h1.editor.w} main.w=${h1.main.w} preview.w=${h1.preview.w} resizer.w=${h1.resizer.w}`);
 
-await evalJson(cdp, sessionId, topbarBtn('顯示預覽'));
+await evalJson(cdp, sessionId, topbarBtn('eye'));
 await sleep(450);
 const h2 = await geom();
 check('desktop: showing the preview again restores the split',
