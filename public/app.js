@@ -673,6 +673,16 @@ const cmsApp = createApp({
         err.unauthorized = true;
         throw err;
       }
+      // A server that does not know the route answers with an HTML error page.
+      // That happens when the page is newer than the running backend, for example
+      // after an update without a restart. Say that, instead of letting the JSON
+      // parser choke on the markup.
+      const type = res.headers.get('content-type') || '';
+      if (!type.includes('application/json')) {
+        const err = new Error(t('toast.backendOutdated'));
+        err.outdated = true;
+        throw err;
+      }
       return res;
     }
 

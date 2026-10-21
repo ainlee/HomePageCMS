@@ -960,7 +960,9 @@ app.post('/api/restore', (req, res) => {
 
 app.listen(Number(EFFECTIVE_PORT), EFFECTIVE_BIND, () => {
   const preview = previewUrlSetting();
-  console.log(`Homepage Editor running at http://localhost:${EFFECTIVE_PORT}`);
+  // The version is in the line on purpose: when two instances are running, this is
+  // how you tell which one has the current code.
+  console.log(`Homepage Editor v${pkg.version} running at http://localhost:${EFFECTIVE_PORT}`);
   console.log(`Listening on: ${EFFECTIVE_BIND}`);
   console.log(`Config path: ${configDirSetting().value}`);
   console.log(`Backup path: ${backupDirSetting().value}`);
