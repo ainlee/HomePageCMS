@@ -444,6 +444,23 @@ const cmsApp = createApp({
     const appearanceMeta = ref({ palette: [], choices: {}, exists: false, path: '' });
     const appearanceReady = ref(false);
 
+    // Homepage's custom.css. It is the official place for custom CSS and the only
+    // way to change something Homepage has no setting for. The editor keeps the
+    // text as it is and writes it back unchanged, so hand-written rules survive.
+    const customCss = reactive({
+      content: '',
+      loaded: '',
+      hash: null,
+      exists: false,
+      // The palette that gets the custom ramp, and the seed colour of that ramp.
+      palette: 'slate',
+      seed: '#64748b',
+      shades: {},
+      css: ''
+    });
+    const customCssReady = ref(false);
+    const customCssDirty = computed(() => customCss.content !== customCss.loaded);
+
     // Drag state
     let dragSource = null;
 
@@ -453,7 +470,13 @@ const cmsApp = createApp({
     const hasPreviewUrl = computed(() => !!previewUrl.value);
     // An empty src would make the iframe load the editor itself, so fall back to a blank
     // document and let the overlay ask for a URL instead.
-    const previewSrc = computed(() => previewUrl.value || 'about:blank');
+    // The counter in the query string keeps the preview from being served from the
+    // browser cache, so a reload really asks the dashboard for the current state.
+    const previewSrc = computed(() => {
+      if (!previewUrl.value) return 'about:blank';
+      const separator = previewUrl.value.includes('?') ? '&' : '?';
+      return previewUrl.value + separator + '_hcms=' + previewKey.value;
+    });
     const previewSourceLabel = computed(() => ({
       'settings-file': t('source.previewSettingsFile'),
       'env': t('source.previewEnv'),
@@ -873,11 +896,20 @@ const cmsApp = createApp({
             })
           }));
         }
-        const [svcRes, bmRes, appRes] = await Promise.all(jobs);
+        // The custom stylesheet is only written when it changed.
+        if (customCssDirty.value) {
+          jobs.push(apiFetch('/api/homepage-custom-css', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: customCss.content, hash: customCss.hash })
+          }));
+        }
+        const [svcRes, bmRes, appRes, cssRes] = await Promise.all(jobs);
         const svcJson = await svcRes.json();
         const bmJson = await bmRes.json();
         const appJson = appRes ? await appRes.json() : { success: true };
-        if (svcJson.success && bmJson.success && appJson.success) {
+        const cssJson = cssRes ? await cssRes.json() : { success: true };
+        if (svcJson.success && bmJson.success && appJson.success && cssJson.success) {
           servicesHash.value = svcJson.hash || null;
           bookmarksHash.value = bmJson.hash || null;
           if (appRes) {
@@ -885,10 +917,15 @@ const cmsApp = createApp({
             const saved = appJson.data.values || {};
             for (const field of appearanceFields) appearanceLoaded[field] = saved[field] || '';
           }
+          if (cssRes) {
+            customCss.hash = cssJson.hash || null;
+            customCss.loaded = customCss.content;
+            customCss.exists = true;
+          }
            showToast(t('toast.saved'));
            refreshPreview();
          } else {
-           const failed = [svcJson, bmJson, appJson].find((j) => j && !j.success);
+           const failed = [svcJson, bmJson, appJson, cssJson].find((j) => j && !j.success);
            showToast(t('toast.saveFailed', { msg: (failed && failed.error) || '' }), 'error');
          }
        } catch (err) {
@@ -1099,6 +1136,8 @@ const cmsApp = createApp({
           appearanceHash.value = json.hash || null;
           appearanceMeta.value = json.data;
           appearanceReady.value = true;
+          // The stylesheet sits next to the settings, so it is read at the same time.
+          loadCustomCss();
         }
       } catch (err) {
         showToast(t('toast.loadAppearanceFailed', { msg: err.message }), 'error');
@@ -1113,6 +1152,8 @@ const cmsApp = createApp({
 
     const appearancePalette = computed(() => appearanceMeta.value.palette || []);
     const knownPaletteIds = computed(() => appearancePalette.value.map((c) => c.id));
+    // The names of the ten shades, in the order the ramp shows them.
+    const rampShades = computed(() => appearanceMeta.value.shades || []);
 
     // The appearance is read when the tab is opened, not on every page load: the
     // file is only needed when the user goes looking at it.
@@ -1143,18 +1184,23 @@ const cmsApp = createApp({
 
     async function saveAppearance() {
       try {
-        const values = {};
-        for (const field of appearanceFields) values[field] = appearance[field] || '';
-        const res = await apiFetch('/api/homepage-settings', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ values, hash: appearanceHash.value })
-        });
-        const json = await res.json();
-        if (!json.success) throw new Error(json.error || t('toast.unknownError'));
-        appearanceHash.value = json.hash || null;
-        const saved = json.data.values || values;
-        for (const field of appearanceFields) appearanceLoaded[field] = saved[field] || '';
+        // Two files live behind this button: the settings of the dashboard and the
+        // stylesheet. Each is only written when it changed.
+        if (appearanceDirty.value) {
+          const values = {};
+          for (const field of appearanceFields) values[field] = appearance[field] || '';
+          const res = await apiFetch('/api/homepage-settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ values, hash: appearanceHash.value })
+          });
+          const json = await res.json();
+          if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+          appearanceHash.value = json.hash || null;
+          const saved = json.data.values || values;
+          for (const field of appearanceFields) appearanceLoaded[field] = saved[field] || '';
+        }
+        if (customCssDirty.value) await saveCustomCss();
         showToast(t('toast.saved'));
         refreshPreview();
         return true;
@@ -1162,6 +1208,87 @@ const cmsApp = createApp({
         showToast(t('toast.saveFailed', { msg: err.message }), 'error');
         return false;
       }
+    }
+
+    // ---- Custom CSS ----
+    // The block the editor writes is marked, so it can be replaced later without
+    // touching the rules the user wrote themselves.
+    function cssBlockStart(palette) { return '/* >>> HomePageCMS: ' + palette + ' >>> */'; }
+    function cssBlockEnd(palette) { return '/* <<< HomePageCMS: ' + palette + ' <<< */'; }
+
+    async function loadCustomCss() {
+      try {
+        const res = await apiFetch('/api/homepage-custom-css');
+        const json = await res.json();
+        if (json.success) {
+          customCss.content = json.data.content || '';
+          customCss.loaded = json.data.content || '';
+          customCss.hash = json.hash || null;
+          customCss.exists = !!json.data.exists;
+          customCssReady.value = true;
+        }
+      } catch (err) {
+        showToast(t('toast.loadCustomCssFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    // A ramp of ten shades from the seed colour. The server does the maths, so
+    // there is one implementation of it.
+    async function generateCustomRamp() {
+      try {
+        const res = await apiFetch('/api/homepage-custom-css/ramp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ palette: customCss.palette, seed: customCss.seed })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+        customCss.shades = json.data.shades || {};
+        customCss.css = json.data.css || '';
+      } catch (err) {
+        showToast(t('toast.generateRampFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    // Put the generated ramp into the text, replacing the block of the same
+    // palette if there is one.
+    function applyCustomRamp() {
+      if (!customCss.css) return;
+      const start = cssBlockStart(customCss.palette);
+      const end = cssBlockEnd(customCss.palette);
+      const block = start + '\n' + customCss.css + '\n' + end;
+      const from = customCss.content.indexOf(start);
+      const to = customCss.content.indexOf(end);
+      if (from !== -1 && to !== -1 && to > from) {
+        customCss.content = customCss.content.slice(0, from) + block + customCss.content.slice(to + end.length);
+      } else {
+        const base = customCss.content.replace(/\s+$/, '');
+        customCss.content = base ? base + '\n\n' + block + '\n' : block + '\n';
+      }
+    }
+
+    // Take the block of a palette out of the text again.
+    function removeCustomRamp() {
+      const start = cssBlockStart(customCss.palette);
+      const end = cssBlockEnd(customCss.palette);
+      const from = customCss.content.indexOf(start);
+      const to = customCss.content.indexOf(end);
+      if (from === -1 || to === -1 || to < from) return;
+      customCss.content = (customCss.content.slice(0, from) + customCss.content.slice(to + end.length)).replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n';
+    }
+
+    async function saveCustomCss() {
+      const res = await apiFetch('/api/homepage-custom-css', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: customCss.content, hash: customCss.hash })
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+      customCss.hash = json.hash || null;
+      customCss.loaded = customCss.content;
+      customCss.exists = true;
+      return true;
     }
 
     // Item CRUD
@@ -1486,7 +1613,10 @@ const cmsApp = createApp({
       showBookmarkGroupModal, showBookmarkItemModal,
       editingBookmarkGroupId, editingBookmarkItemId, editingBookmarkGroup, editingBookmarkItem,
       appearance, appearanceMeta, appearancePalette, knownPaletteIds, appearanceDirty, appearanceReady,
+      rampShades,
       appearanceChoices, appearanceChoiceLabel, loadAppearance, saveAppearance, openAppearanceTab,
+      customCss, customCssDirty, customCssReady, loadCustomCss, generateCustomRamp,
+      applyCustomRamp, removeCustomRamp, saveCustomCss,
       movingItem, movingFromGroup, dragOverGroup, backups, toast,
       totalItems, widgetValueLabel, widgetValuePlaceholder,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,

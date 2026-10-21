@@ -63,7 +63,10 @@ check('every colour of the palette is offered', swatches === 23, String(swatches
 const fields = await ev(`JSON.stringify([...document.querySelectorAll('.appearance-panel select')].map((s) =>
   s.closest('.form-group').querySelector('label').textContent.trim()))`);
 const labels = JSON.parse(fields);
-check('the appearance fields are there', labels.length === 7, fields);
+// The custom CSS section adds a select of its own, so the style fields are
+// looked for by name rather than counted.
+const styleFields = ['深淺色', '卡片模糊', '標題樣式', '卡片樣式', '區塊樣式', '圖示樣式', '字型'];
+check('the appearance fields are there', styleFields.every((label) => labels.includes(label)), fields);
 
 // The form shows what the file holds.
 const shown = await ev(`JSON.stringify({

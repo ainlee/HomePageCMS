@@ -68,7 +68,7 @@
           <span class="stats" v-if="activeTab === 'services'">{{ t('tabs.statsServices', { count: groups.length, total: totalItems }) }}</span>
           <span class="stats" v-if="activeTab === 'bookmarks'">{{ t('tabs.statsBookmarks', { count: bookmarkGroups.length }) }}</span>
           <span class="stats" v-if="activeTab === 'appearance'">
-            <template v-if="appearanceDirty">{{ t('appearance.unsaved') }}</template>
+            <template v-if="appearanceDirty || customCssDirty">{{ t('appearance.unsaved') }}</template>
             <template v-else-if="appearanceReady">{{ t('appearance.savedState') }}</template>
             <template v-else>{{ t('appearance.loading') }}</template>
           </span>
@@ -186,7 +186,7 @@
             <div class="appearance-panel">
               <div class="appearance-head">
                 <p class="appearance-hint">{{ t('appearance.hint') }}</p>
-                <button @click="saveAppearance" class="btn btn-small btn-primary" :disabled="!appearanceDirty">
+                <button @click="saveAppearance" class="btn btn-small btn-primary" :disabled="!appearanceDirty && !customCssDirty">
                   <i class="mdi mdi-content-save"></i> {{ t('appearance.save') }}
                 </button>
                 <button @click="loadAppearance" class="btn btn-icon btn-secondary" :title="t('appearance.reload')">
@@ -284,6 +284,42 @@
                     <input v-model="appearance.backgroundOpacity" type="text" :placeholder="t('appearance.backgroundNumberPlaceholder')">
                   </div>
                 </div>
+              </div>
+
+              <div class="appearance-section">
+                <h3 class="appearance-title">{{ t('appearance.customCssTitle') }}</h3>
+                <p class="appearance-note">{{ t('appearance.customCssHint') }}</p>
+                <div class="form-grid appearance-grid">
+                  <div class="form-group">
+                    <label>{{ t('appearance.customCssPalette') }}</label>
+                    <select v-model="customCss.palette">
+                      <option v-for="c in appearancePalette" :key="c.id" :value="c.id">{{ c.id }}</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.customCssSeed') }}</label>
+                    <input type="color" v-model="customCss.seed" @change="generateCustomRamp">
+                  </div>
+                </div>
+                <div class="ramp-preview" v-if="customCss.css">
+                  <span v-for="name in rampShades" :key="name" class="ramp-chip"
+                        :style="{ background: customCss.shades[name] }"
+                        :title="name + ' ' + customCss.shades[name]"></span>
+                </div>
+                <div class="appearance-actions">
+                  <button @click="generateCustomRamp" class="btn btn-small btn-secondary">
+                    <i class="mdi mdi-palette"></i> {{ t('appearance.customCssGenerate') }}
+                  </button>
+                  <button @click="applyCustomRamp" class="btn btn-small btn-secondary" :disabled="!customCss.css">
+                    <i class="mdi mdi-content-paste"></i> {{ t('appearance.customCssApply') }}
+                  </button>
+                  <button @click="removeCustomRamp" class="btn btn-small btn-secondary">
+                    <i class="mdi mdi-delete"></i> {{ t('appearance.customCssRemove') }}
+                  </button>
+                </div>
+                <textarea v-model="customCss.content" class="css-editor" spellcheck="false"
+                          :placeholder="t('appearance.customCssPlaceholder')"></textarea>
+                <p class="appearance-note">{{ t('appearance.customCssCacheNote') }}</p>
               </div>
             </div>
           </template>

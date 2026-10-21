@@ -276,6 +276,12 @@ function homepageSettingsFile() {
   return path.join(configDirSetting().value, 'settings.yaml');
 }
 
+// The stylesheet Homepage loads on top of its own. It is the official place for
+// custom CSS, and the only way to change a colour that Homepage has no setting for.
+function homepageCustomCssFile() {
+  return path.join(configDirSetting().value, 'custom.css');
+}
+
 // Older installs kept the editor's settings inside the Homepage config directory. Move
 // them to the editor's own directory so that directory holds Homepage's files only.
 function migrateLegacySettings() {
@@ -379,11 +385,12 @@ function settingsPayload() {
 }
 
 // Copy the current file into the backup directory before it is overwritten. Used for
-// both the Homepage config files and the editor's own settings file.
-function copyBackup(file, prefix) {
+// both the Homepage config files and the editor's own settings file. The extension
+// says what kind of file the backup holds.
+function copyBackup(file, prefix, extension) {
   if (!fs.existsSync(file)) return;
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const target = path.join(backupDirSetting().value, `${prefix}-${timestamp}.yaml`);
+  const target = path.join(backupDirSetting().value, `${prefix}-${timestamp}.${extension || 'yaml'}`);
   // Read and write instead of copying: a copy inherits the file's attributes, and on
   // Windows a file with the Hidden attribute cannot be opened for writing later on.
   writeFileSafe(target, fs.readFileSync(file));
@@ -601,6 +608,7 @@ app.get('/api/homepage-settings', (req, res) => {
       data: {
         values: appearanceLib.readAppearance(settings),
         palette: appearanceLib.palette(),
+        shades: appearanceLib.SHADE_NAMES,
         choices: appearanceLib.CHOICES,
         exists,
         path: file
@@ -653,6 +661,66 @@ app.put('/api/homepage-settings', (req, res) => {
       data: { values: appearanceLib.readAppearance(next) },
       hash: fileHash(file)
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/homepage-custom-css - the stylesheet Homepage loads on top of its own
+app.get('/api/homepage-custom-css', (req, res) => {
+  try {
+    const file = homepageCustomCssFile();
+    const exists = fs.existsSync(file);
+    const content = exists ? fs.readFileSync(file, 'utf8') : '';
+    res.json({ success: true, data: { content, exists, path: file }, hash: fileHash(file) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/homepage-custom-css - write custom.css with a backup
+app.put('/api/homepage-custom-css', (req, res) => {
+  try {
+    const file = homepageCustomCssFile();
+    const conflict = checkUnchanged(file, req.body && req.body.hash);
+    if (conflict) return res.status(409).json({ success: false, error: conflict });
+
+    const content = req.body && typeof req.body.content === 'string' ? req.body.content : null;
+    if (content === null) {
+      return res.status(400).json({ success: false, error: '設定值格式不正確: content' });
+    }
+    // The file is served to every visitor of the dashboard, so it stays small.
+    if (content.length > 1024 * 1024) {
+      return res.status(400).json({ success: false, error: '設定值格式不正確: content' });
+    }
+
+    const exists = fs.existsSync(file);
+    if (exists && fs.readFileSync(file, 'utf8') === content) {
+      return res.json({ success: true, data: { unchanged: true }, hash: fileHash(file) });
+    }
+
+    copyBackup(file, 'homepage-custom-css', 'css');
+    writeFileSafe(file, content);
+    res.json({ success: true, data: { content }, hash: fileHash(file) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/homepage-custom-css/ramp - a colour ramp for a seed colour
+app.post('/api/homepage-custom-css/ramp', (req, res) => {
+  try {
+    const body = req.body || {};
+    const paletteId = String(body.palette || '').trim();
+    const seed = String(body.seed || '').trim();
+    if (!appearanceLib.PALETTE[paletteId]) {
+      return res.status(400).json({ success: false, error: '設定值格式不正確: palette' });
+    }
+    const shades = appearanceLib.generateRamp(seed);
+    if (!shades) {
+      return res.status(400).json({ success: false, error: '設定值格式不正確: seed' });
+    }
+    res.json({ success: true, data: { shades, css: appearanceLib.rampCss(paletteId, shades) } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
