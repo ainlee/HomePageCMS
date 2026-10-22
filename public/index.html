@@ -201,6 +201,14 @@
               <div class="appearance-section">
                 <h3 class="appearance-title">{{ t('appearance.colorTitle') }}</h3>
                 <div class="palette-grid">
+                  <button type="button"
+                          class="palette-swatch palette-none" :class="{ active: !appearance.color }"
+                          :title="t('appearance.notSet')" @click="appearance.color = ''">
+                    <span class="swatch-pair">
+                      <i class="mdi mdi-close-thick"></i>
+                    </span>
+                    <span class="swatch-name">{{ t('appearance.notSetShort') }}</span>
+                  </button>
                   <button v-for="c in appearancePalette" :key="c.id" type="button"
                           class="palette-swatch" :class="{ active: appearance.color === c.id }"
                           :title="c.id" @click="appearance.color = c.id">

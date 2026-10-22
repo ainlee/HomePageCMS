@@ -55,10 +55,14 @@ await sleep(800);
 await click('.tab-bar .tab-btn:nth-child(3)');
 const opened = await waitFor(`!!document.querySelector('.appearance-panel')`);
 check('the appearance tab opens', opened);
-await sleep(600);
+// The palette comes from the configuration directory, which may be a network
+// share and take a moment.
+await waitFor(`document.querySelectorAll('.palette-swatch').length > 1`);
+await sleep(400);
 
 const swatches = await ev(`document.querySelectorAll('.palette-swatch').length`);
-check('every colour of the palette is offered', swatches === 23, String(swatches));
+// 23 colours plus the "not set" cell in front of them.
+check('every colour of the palette is offered', swatches === 24, String(swatches));
 
 const fields = await ev(`JSON.stringify([...document.querySelectorAll('.appearance-panel select')].map((s) =>
   s.closest('.form-group').querySelector('label').textContent.trim()))`);
@@ -107,12 +111,43 @@ check('the other fields of the file are kept',
   && fileText.data.values.backgroundImage === (originalValues.backgroundImage || ''),
   JSON.stringify(fileText.data.values));
 
+// The first cell of the palette is "not set": the way back to a dashboard that
+// offers its own colour switch.
+const noneCell = await ev(`(() => {
+  const first = document.querySelector('.palette-swatch');
+  if (!first) return 'no cell';
+  return JSON.stringify({
+    isNone: first.classList.contains('palette-none'),
+    title: first.getAttribute('title')
+  });
+})()`);
+const noneInfo = JSON.parse(noneCell);
+check('the palette starts with a "not set" cell',
+  noneInfo.isNone === true && String(noneInfo.title).length > 0, noneCell);
+
+await click('.palette-swatch[title="rose"]');
+await sleep(300);
+await click('.palette-none');
+await sleep(300);
+const cleared = await ev(`JSON.stringify({
+  active: [...document.querySelectorAll('.palette-swatch.active')].map((b) => b.getAttribute('title')),
+  activeIsNone: !!document.querySelector('.palette-swatch.active.palette-none')
+})`);
+check('the "not set" cell takes the colour away',
+  JSON.parse(cleared).activeIsNone === true, cleared);
+
+await click('.appearance-head .btn-primary');
+await sleep(2000);
+const afterClear = await api();
+check('the colour key is out of the file again',
+  !afterClear.data.values.color, 'color=' + afterClear.data.values.color);
+
 // Put the original values back through the same API, so the file ends up the way
 // it was even when the browser part of the test failed half way.
 await fetch(APP_URL + '/api/homepage-settings', {
   method: 'PUT',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ values: originalValues, hash: fileText.hash })
+  body: JSON.stringify({ values: originalValues, hash: afterClear.hash })
 });
 const restored = await api();
 check('the original colour is back in the file', restored.data.values.color === originalColour,

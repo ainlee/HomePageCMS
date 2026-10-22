@@ -59,6 +59,12 @@ async function loadMobile(width, height, stub) {
     if (await ev(`!!(document.querySelector('#app') && document.querySelector('#app').__vue_app__)`)) break;
     await sleep(150);
   }
+  // The service list comes from the configuration directory, which may be a
+  // network share and take a moment. The measurements below are about that list.
+  for (let i = 0; i < 120; i++) {
+    if (await ev(`!!document.querySelector('.group-card')`)) break;
+    await sleep(150);
+  }
   await ev('document.fonts.ready.then(() => true)');
   await sleep(600);
   return identifier;

@@ -632,6 +632,25 @@ body {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
+/* The first cell is not a colour but the absence of one: it takes the palette
+   key out of the file, so the dashboard offers its own switch again. */
+.palette-none .swatch-pair {
+  width: 34px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border);
+  border-radius: 5px;
+  color: var(--text-dim);
+}
+
+.palette-none.active .swatch-pair {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .palette-swatch .swatch-pair { display: flex; gap: 3px; }
 .palette-swatch .swatch-light,
 .palette-swatch .swatch-dark {

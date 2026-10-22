@@ -98,7 +98,11 @@ await sleep(800);
 await ev(`(() => { [...document.querySelectorAll('.tab-btn')].find(b => b.textContent.includes('外觀')).click(); return true; })()`);
 const opened = await waitFor(`!!document.querySelector('.appearance-panel')`);
 check('the appearance tab opens', opened);
-await sleep(800);
+// The palette comes from the configuration directory, which may be a network
+// share and take a moment.
+const paletteReady = await waitFor(`document.querySelectorAll('.palette-swatch').length > 1`);
+check('the palette is there', paletteReady);
+await sleep(400);
 
 // The two rows of shades.
 const rows = await ev(`(() => {
