@@ -333,7 +333,6 @@
                     <span class="seed-swatch" :style="{ background: customCss.official[customCssPalette] }"
                           :title="t('appearance.officialColour')"></span>
                     <span class="seed-label">{{ t('appearance.officialColour') }}</span>
-                    <span class="seed-swatch" :style="{ background: customCssSeed(customCssPalette) }"></span>
                     <input type="color" class="seed-input"
                            :value="customCssSeed(customCssPalette)"
                            @input="setCustomCssSeed(customCssPalette, $event.target.value)">

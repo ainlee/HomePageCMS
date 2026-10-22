@@ -75,7 +75,8 @@ check('the appearance fields are there', styleFields.every((label) => labels.inc
 // The form shows what the file holds.
 const shown = await ev(`JSON.stringify({
   theme: (() => { const s = document.querySelectorAll('.appearance-panel select')[0]; return s ? s.value : null; })(),
-  colour: (() => { const b = document.querySelector('.palette-swatch.active'); return b ? b.getAttribute('title') : ''; })()
+  // The "not set" cell is active when no palette is chosen, so it is left out.
+  colour: (() => { const b = document.querySelector('.palette-swatch.active:not(.palette-none)'); return b ? b.getAttribute('title') : ''; })()
 })`);
 const form = JSON.parse(shown);
 check('the form shows the colour of the file', (form.colour || '') === originalColour,

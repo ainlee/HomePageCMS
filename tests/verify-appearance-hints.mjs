@@ -138,6 +138,22 @@ check('the note next to the title appears on focus',
   tip.before === 'hidden' && tip.after === 'visible', JSON.stringify(tip));
 check('the note has a readable size', tip.width > 150 && tip.height > 30 && tip.length > 20, JSON.stringify(tip));
 
+// The note hangs to the right of the mark: centred on it, half of it would run
+// off the side of a narrow screen.
+const hang = JSON.parse(await ev(`(() => {
+  const mark = document.querySelector('.info-mark');
+  const tipEl = mark.querySelector('.info-tip');
+  const m = mark.getBoundingClientRect();
+  const t = tipEl.getBoundingClientRect();
+  return JSON.stringify({
+    markLeft: Math.round(m.left),
+    tipLeft: Math.round(t.left),
+    difference: Math.round(t.left - m.left)
+  });
+})()`));
+check('the note hangs to the right of the mark',
+  hang.difference >= 0 && hang.difference < 20, JSON.stringify(hang));
+
 // The warning for a palette Homepage does not know.
 const warning = await ev(`(() => {
   const el = document.querySelector('.appearance-warning');
@@ -163,6 +179,24 @@ const narrow = JSON.parse(await ev(`(() => {
 })()`));
 check('the note stays inside the panel on a phone',
   narrow.tipLeft >= narrow.panelLeft && narrow.tipRight <= narrow.panelRight, JSON.stringify(narrow));
+
+// The seed colour is picked on the swatch itself: one swatch for the official
+// colour, one picker for the seed, and no third block in between.
+const seed = JSON.parse(await ev(`(() => {
+  const field = document.querySelector('.seed-fields');
+  if (!field) return '{"missing":true}';
+  const swatches = [...field.querySelectorAll('.seed-swatch')];
+  const pickers = [...field.querySelectorAll('input[type="color"]')];
+  return JSON.stringify({
+    swatches: swatches.length,
+    pickers: pickers.length,
+    pickerRightOfOfficial: pickers[0] && swatches[0]
+      ? Math.round(pickers[0].getBoundingClientRect().left) > Math.round(swatches[0].getBoundingClientRect().left)
+      : false
+  });
+})()`));
+check('the seed colour is picked on one swatch',
+  seed.swatches === 1 && seed.pickers === 1 && seed.pickerRightOfOfficial, JSON.stringify(seed));
 
 // The real installation must not have been touched.
 const live = await (await fetch('http://localhost:3456/api/homepage-settings')).json();

@@ -62,3 +62,21 @@ TBD - created by archiving change topbar-controls-and-dialog-stacking. Update Pu
 
 - **WHEN** 套件檔的版本改了並重新啟動編輯器
 - **THEN** 設定視窗顯示的是新的版本號
+
+### Requirement: 編輯區的分頁列固定可見
+
+系統 SHALL 把服務、書籤與首頁外觀的分頁列，以及它旁邊的按鈕，固定在編輯區的頂端。
+清單捲動時，內容 SHALL 從分頁列底下捲過，分頁列本身 SHALL 保持在原位。
+
+分頁列 SHALL 覆蓋編輯區的內距，讓捲過去的內容不會從它上方露出來；分頁列的
+背景 SHALL 與編輯區相同。
+
+#### Scenario: 捲動時分頁列不動
+
+- **WHEN** 使用者在編輯區把服務清單往下捲
+- **THEN** 分頁列與旁邊的按鈕留在螢幕上的同一個位置，內容從它底下捲過
+
+#### Scenario: 分頁列不會露出底下的內容
+
+- **WHEN** 清單捲到分頁列後方
+- **THEN** 分頁列的位置看不到任何從它上方或旁邊漏出的內容

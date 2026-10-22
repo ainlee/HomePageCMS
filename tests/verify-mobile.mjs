@@ -238,6 +238,32 @@ check('desktop: layout still fills the viewport with a side-by-side split',
   d.app.h === 900 && d.main.bottom === 900 && d.preview.h === d.main.h && d.preview.left > d.editor.left,
   `app.h=${d.app.h} main.bottom=${d.main.bottom} editor.w=${d.editor.w} preview.h=${d.preview.h} main.h=${d.main.h} preview.left=${d.preview.left}`);
 
+// ---- F. the tab row stays put while the list scrolls ----
+// The tab row and the buttons next to it are the way out of a long list, so
+// they have to stay on screen.
+for (const width of [390, 1440]) {
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: width < 500 }, sessionId);
+  await cdp.send('Page.navigate', { url: APP_URL }, sessionId);
+  for (let i = 0; i < 120; i++) { if (await ev(`!!document.querySelector('.group-card')`)) break; await sleep(150); }
+  await sleep(500);
+  const bar = async () => JSON.parse(await ev(`(() => {
+    const tb = document.querySelector('.editor-toolbar');
+    const panel = document.querySelector('.editor-panel');
+    return JSON.stringify({
+      top: Math.round(tb.getBoundingClientRect().top),
+      panelTop: Math.round(panel.getBoundingClientRect().top),
+      scrollTop: panel.scrollTop
+    });
+  })()`));
+  const before = await bar();
+  await ev(`(() => { document.querySelector('.editor-panel').scrollTop = 300; })()`);
+  await sleep(400);
+  const after = await bar();
+  check(`the tab row stays on screen while the list scrolls (${width}px)`,
+    after.scrollTop > 0 && Math.abs(after.top - before.top) <= 1 && after.top <= after.panelTop + 1,
+    `toolbar.top ${before.top} -> ${after.top} (panel.top ${after.panelTop}, scrolled ${after.scrollTop})`);
+}
+
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
 ws.close(); chrome.kill();

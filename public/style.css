@@ -175,7 +175,10 @@ body {
 .editor-panel {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  /* The gutter the toolbar reaches over. It is a variable so the bar can undo it
+     exactly, see .editor-toolbar. */
+  --editor-gutter: 16px;
+  padding: var(--editor-gutter);
   min-width: 0;
 }
 
@@ -187,10 +190,19 @@ body {
 .editor-panel.full-width { flex: 1; }
 
 .editor-toolbar {
+  /* The tab row and its buttons stay where they are while the list scrolls
+     under them, which matters most on a phone where the list is long. */
+  position: sticky;
+  top: calc(-1 * var(--editor-gutter));
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  /* The panel has padding of its own, so the bar reaches over it and carries
+     the same padding. The content that scrolls under it stays hidden. */
+  margin: calc(-1 * var(--editor-gutter)) calc(-1 * var(--editor-gutter)) 0;
+  padding: var(--editor-gutter);
+  background: var(--bg);
 }
 
 .stats { color: var(--text-dim); font-size: 13px; }
@@ -704,8 +716,10 @@ body {
 .info-tip {
   position: absolute;
   top: 120%;
-  left: 50%;
-  transform: translateX(-50%);
+  /* Hanging to the right of the mark: the mark sits at the left of a title,
+     and a note centred on it would run off the side of a narrow screen. */
+  left: 0;
+  transform: none;
   z-index: 20;
   width: 260px;
   padding: 8px 10px;
