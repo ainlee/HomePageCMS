@@ -214,6 +214,7 @@
                 <p v-if="appearance.color && !knownPaletteIds.includes(appearance.color)" class="appearance-warning">
                   {{ t('appearance.unknownColor', { color: appearance.color }) }}
                 </p>
+                <p class="appearance-note">{{ t('appearance.colorSwitchesNote') }}</p>
               </div>
 
               <div class="appearance-section">
@@ -306,9 +307,10 @@
                            :disabled="!!appearance.font" :placeholder="t('appearance.fontNamePlaceholder')">
                     <input v-model="customCss.fontUrl" type="text" class="font-url"
                            :disabled="!!appearance.font" :placeholder="t('appearance.fontUrlPlaceholder')"
-                           @change="customCss.fontName = customCss.fontName || fontNameFromUrl(customCss.fontUrl)">
+                           @change="probeFontUrl()">
                   </div>
                   <p class="appearance-note">{{ t('appearance.fontHint') }}</p>
+                  <p class="appearance-note" v-if="customCss.fontNote">{{ customCss.fontNote }}</p>
                 </div>
 
                 <div class="form-group">

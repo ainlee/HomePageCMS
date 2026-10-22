@@ -236,6 +236,98 @@ const afterAll = await api();
 check('the reset of everything clears the file',
   (afterAll.data.content || '').trim() === '', JSON.stringify((afterAll.data.content || '').slice(0, 80)));
 
+// The seed colour must stay a small square, not be stretched by the rule that
+// makes form inputs fill their column.
+const seedSize = await ev(`(() => {
+  const input = document.querySelector('.seed-input');
+  const r = input.getBoundingClientRect();
+  return JSON.stringify({ w: Math.round(r.width), h: Math.round(r.height) });
+})()`);
+const seedInfo = JSON.parse(seedSize);
+check('the seed colour stays a small square',
+  seedInfo.w <= 60 && seedInfo.h <= 40, seedSize);
+
+// The palette switcher note: Homepage hides its own switcher once a palette is
+// set, and the editor has to say so.
+const note = await ev(`(() => {
+  const notes = [...document.querySelectorAll('.appearance-note')].map((n) => n.textContent.trim());
+  return JSON.stringify(notes.find((n) => n.includes('Homepage')) || '');
+})()`);
+check('the editor explains that the palette switcher disappears', note.length > 20, note);
+
+// The font probe: a stylesheet gives its family names, a font file does not.
+const probeStylesheet = await (await fetch(APP_URL + '/api/homepage-font-probe', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ url: 'https://fontsapi.zeoseven.com/101/main/result.css' })
+})).json();
+check('a stylesheet gives its font family name',
+  probeStylesheet.success && probeStylesheet.data.kind === 'css' &&
+  probeStylesheet.data.families.includes('Cubic 11'), JSON.stringify(probeStylesheet.data));
+
+const probeFile = await (await fetch(APP_URL + '/api/homepage-font-probe', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ url: 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/Cubic_11_1.100_R.woff2' })
+})).json();
+check('a font file is recognised as a font file',
+  probeFile.success && probeFile.data.kind === 'font', JSON.stringify(probeFile.data));
+
+const probeMissing = await (await fetch(APP_URL + '/api/homepage-font-probe', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ url: 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/+esm' })
+})).json();
+check('an address that does not exist is reported',
+  !probeMissing.success && String(probeMissing.error).includes('404'), JSON.stringify(probeMissing.error));
+
+// A font file is loaded with a font-face rule, a stylesheet with an import.
+const withFile = await (await fetch(APP_URL + '/api/homepage-custom-css', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    hash: (await (await fetch(APP_URL + '/api/homepage-custom-css')).json()).hash,
+    parts: {
+      fontName: 'Cubic 11',
+      fontUrl: 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/Cubic_11_1.100_R.woff2',
+      fontKind: 'font',
+      themes: {},
+      free: ''
+    }
+  })
+})).json();
+check('a font file is written as a font-face rule',
+  withFile.success && withFile.data.content.includes('@font-face') &&
+  withFile.data.content.includes('Cubic_11_1.100_R.woff2') &&
+  !withFile.data.content.includes('@import'), (withFile.data.content || '').slice(0, 120));
+
+const withStylesheet = await (await fetch(APP_URL + '/api/homepage-custom-css', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    hash: withFile.hash,
+    parts: {
+      fontName: 'Cubic 11',
+      fontUrl: 'https://fontsapi.zeoseven.com/101/main/result.css',
+      fontKind: 'css',
+      themes: {},
+      free: ''
+    }
+  })
+})).json();
+check('a stylesheet is written as an import at the top',
+  withStylesheet.success &&
+  // Comments may come first; the first rule has to be the import.
+  (withStylesheet.data.content || '').replace(/^\s*(?:\/\*[\s\S]*?\*\/\s*)*/, '').startsWith('@import'),
+  (withStylesheet.data.content || '').slice(0, 120));
+
+// Put the file back the way it was.
+await fetch(APP_URL + '/api/homepage-custom-css', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ hash: withStylesheet.hash, parts: { fontName: '', fontUrl: '', fontKind: '', themes: {}, free: '' } })
+});
+
 stop();
 cleanup();
 

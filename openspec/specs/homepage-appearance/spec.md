@@ -22,6 +22,11 @@
 「自訂 CSS」區塊的標題旁 SHALL 有一個可聚焦的提示標記，滑鼠停留或鍵盤聚焦時
 浮出說明，內容為儀表板可能快取 `custom.css`、改完樣式需要重新載入頁面。
 
+配色列 SHALL 說明：在這裡選了配色之後，Homepage 頁腳的調色盤切換鈕就不會出現
+（官方行為），把配色設成「不指定」可以讓它回來。
+
+種子色的色票 SHALL 保持小尺寸，不得被表單的輸入框寬度規則撐開。
+
 #### Scenario: 讀取現有設定
 
 - **WHEN** 使用者開啟「首頁外觀」分頁
@@ -57,6 +62,17 @@
 
 - **WHEN** 使用者把滑鼠停在「自訂 CSS」標題旁的驚嘆號上
 - **THEN** 浮出提示，說明儀表板可能快取 `custom.css`、改完需要重新載入頁面
+
+#### Scenario: 選了配色後的切換鈕
+
+- **WHEN** 使用者在配色列選了一個配色
+- **THEN** 介面說明 Homepage 頁腳的調色盤切換鈕會消失，要讓它回來請把配色設成
+  「不指定」
+
+#### Scenario: 種子色色票的大小
+
+- **WHEN** 使用者看著種子色的色票
+- **THEN** 色票是小方塊，不會被拉成整列寬度
 
 #### Scenario: 產生自訂配色
 
@@ -155,8 +171,15 @@ SHALL 顯示以官方原色為種子產生的樣式作為預覽，但不得因�
 
 ### Requirement: 可改用 CDN 或本機字型
 
-系統 SHALL 讓使用者指定字型名稱，SHALL 讓使用者選擇性地指定字型的來源網址。填了
-來源網址時，系統 SHALL 產生 `@import`；沒填時只產生 `font-family`。
+系統 SHALL 讓使用者指定字型名稱，SHALL 讓使用者選擇性地指定字型的來源網址。
+
+當來源網址指向樣式表時，系統 SHALL 產生 `@import`；當它指向字型檔
+（woff2、woff、ttf 或 otf）時，系統 SHALL 產生 `@font-face`。兩種情況都以字型名稱
+作為 `font-family` 的值。
+
+系統 SHALL 在使用者填入來源網址時讀取該網址，找出其中可用的 `@font-face` 家族
+名稱並填入名稱欄位；找不到時 SHALL 說明那是一個字型檔，名稱須由使用者填寫。
+讀取 SHALL 只支援 http 與 https，且讀取的內容 SHALL 有長度上限。
 
 系統 SHALL 產生 `@import` 時把它放在 `custom.css` 的最前面，因為瀏覽器只會
 採用樣式表第一條 `@import` 規則。系統 SHALL 在介面上鎖住字型輸入框（但不清除
@@ -166,13 +189,30 @@ SHALL 顯示以官方原色為種子產生的樣式作為預覽，但不得因�
 #### Scenario: 只填字型名稱
 
 - **WHEN** 使用者只填了字型名稱
-- **THEN** `custom.css` 裡只有 `font-family`，沒有 `@import`
+- **THEN** `custom.css` 裡只有 `font-family`，沒有 `@import` 與 `@font-face`
 
 #### Scenario: 填了名稱與網址
 
 - **WHEN** 使用者填了字型名稱與來源網址
+- **THEN** `custom.css` 裡有該網址對應的匯入規則，且 `font-family` 用同一個
+  字型名稱
+
+#### Scenario: 填了名稱與樣式表網址
+
+- **WHEN** 使用者填了字型名稱與一個樣式表的網址
 - **THEN** `custom.css` 裡有 `@import` 且它在檔案最前面，`font-family` 用同一個
   字型名稱
+
+#### Scenario: 填了名稱與字型檔網址
+
+- **WHEN** 使用者填了字型名稱與一個字型檔的網址
+- **THEN** `custom.css` 裡有 `@font-face`，其 `src` 指向該字型檔，
+  `font-family` 用同一個字型名稱
+
+#### Scenario: 只填網址時查出字型名稱
+
+- **WHEN** 使用者填了一個含有 `@font-face` 的樣式表網址
+- **THEN** 介面從樣式表裡找出家族名稱並填入名稱欄位，並顯示找到的是哪一個字型
 
 #### Scenario: 選了內建字型時輸入框鎖住
 

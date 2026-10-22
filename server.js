@@ -689,7 +689,7 @@ app.get('/api/homepage-custom-css', (req, res) => {
       success: true,
       data: {
         content,
-        parts: { fontName: parts.fontName, fontUrl: parts.fontUrl, themes, free: parts.free },
+        parts: { fontName: parts.fontName, fontUrl: parts.fontUrl, fontKind: parts.fontKind, themes, free: parts.free },
         official: appearanceLib.PALETTE_IDS.reduce((out, id) => {
           out[id] = appearanceLib.officialColor(id);
           return out;
@@ -733,6 +733,7 @@ app.put('/api/homepage-custom-css', (req, res) => {
     const content = customCssLib.assemble({
       fontName: String(parts.fontName || ''),
       fontUrl: String(parts.fontUrl || ''),
+      fontKind: String(parts.fontKind || ''),
       themes,
       free: String(parts.free || '')
     });
@@ -772,6 +773,74 @@ app.post('/api/homepage-custom-css/ramp', (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// POST /api/homepage-font-probe - find out what a font address holds
+//
+// The address the user types is either a stylesheet with font-face rules, or a
+// font file. The editor needs to know which, and for a stylesheet it needs the
+// family names inside it, so the user does not have to spell them out.
+app.post('/api/homepage-font-probe', async (req, res) => {
+  const url = String((req.body && req.body.url) || '').trim();
+  if (!/^https?:\/\//i.test(url)) {
+    return res.status(400).json({ success: false, error: '設定值格式不正確: url' });
+  }
+  // Only a part of the file is read: a font file is bigger than what is needed
+  // to recognise it, and the editor is a local tool, so the read is kept small.
+  const LIMIT = 512 * 1024;
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HomePageCMS)' },
+      signal: AbortSignal.timeout(15000)
+    });
+    const type = (response.headers.get('content-type') || '').toLowerCase();
+    const looksLikeFont = /font|woff|ttf|otf/.test(type) ||
+      /\.(woff2?|ttf|otf|eot)(\?|$)/i.test(url);
+    if (!response.ok) {
+      return res.status(400).json({ success: false, error: '無法讀取該網址（' + response.status + '）' });
+    }
+    if (looksLikeFont) {
+      return res.json({
+        success: true,
+        data: { kind: 'font', families: [], status: response.status }
+      });
+    }
+    const text = await readAtMost(response, LIMIT);
+    const families = [];
+    const pattern = /font-family:\s*["']?([^;"']+)["']?\s*;/g;
+    let match;
+    while ((match = pattern.exec(text))) {
+      const name = match[1].trim();
+      if (name && !families.includes(name)) families.push(name);
+    }
+    res.json({
+      success: true,
+      data: { kind: families.length ? 'css' : 'unknown', families, status: response.status }
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: '無法讀取該網址: ' + err.message });
+  }
+});
+
+// Read at most a number of bytes from a response.
+async function readAtMost(response, limit) {
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: false });
+  let text = '';
+  let read = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      read += value.length;
+      if (read >= limit) break;
+    }
+  } finally {
+    try { await reader.cancel(); } catch { /* the rest is not needed */ }
+  }
+  return text + decoder.decode();
+}
 
 // POST /api/homepage-revalidate - make the dashboard forget its cached settings
 //

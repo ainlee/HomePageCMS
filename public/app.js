@@ -455,6 +455,11 @@ const cmsApp = createApp({
     const customCss = reactive({
       fontName: '',
       fontUrl: '',
+      // 'css' when the address is a stylesheet, 'font' when it is a font file.
+      fontKind: '',
+      // What the probe found in that address.
+      fontFamilies: [],
+      fontNote: '',
       // Palette id -> { css, seed }
       themes: {},
       free: '',
@@ -480,6 +485,7 @@ const cmsApp = createApp({
       return {
         fontName: customCss.fontName,
         fontUrl: customCss.fontUrl,
+        fontKind: customCss.fontKind,
         themes,
         free: customCss.free
       };
@@ -573,6 +579,9 @@ const cmsApp = createApp({
       customCss.themes = {};
       customCss.fontName = '';
       customCss.fontUrl = '';
+      customCss.fontKind = '';
+      customCss.fontFamilies = [];
+      customCss.fontNote = '';
     }
 
     // Throw everything away and write it at once, so there is no doubt about
@@ -595,13 +604,42 @@ const cmsApp = createApp({
       }
     }
 
-    // The name of the font out of a Google Fonts address, so the user does not
-    // have to type it twice.
-    function fontNameFromUrl(url) {
-      const match = String(url || '').match(/[?&]family=([^&]+)/);
-      if (!match) return '';
-      const value = decodeURIComponent(match[1]).split(':')[0].replace(/\+/g, ' ').trim();
-      return value;
+    // Find out what the address holds: a stylesheet with font-face rules, or a
+    // font file. The name of the family comes out of the stylesheet, so the user
+    // does not have to spell it out.
+    async function probeFontUrl() {
+      const url = (customCss.fontUrl || '').trim();
+      if (!url) {
+        customCss.fontKind = '';
+        customCss.fontFamilies = [];
+        customCss.fontNote = '';
+        return;
+      }
+      try {
+        const res = await apiFetch('/api/homepage-font-probe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+        const data = json.data || {};
+        customCss.fontKind = data.kind || '';
+        customCss.fontFamilies = data.families || [];
+        if (data.kind === 'font') {
+          customCss.fontNote = t('appearance.fontIsFile');
+        } else if (customCss.fontFamilies.length) {
+          customCss.fontNote = t('appearance.fontFound', { name: customCss.fontFamilies.join(', ') });
+          // The name goes in by itself when the field is still empty.
+          if (!customCss.fontName) customCss.fontName = customCss.fontFamilies[0];
+        } else {
+          customCss.fontNote = t('appearance.fontUnknown');
+        }
+      } catch (err) {
+        customCss.fontKind = '';
+        customCss.fontFamilies = [];
+        customCss.fontNote = t('appearance.fontProbeFailed', { msg: err.message });
+      }
     }
 
     // Drag state
@@ -1390,6 +1428,7 @@ const cmsApp = createApp({
           const parts = json.data.parts || {};
           customCss.fontName = parts.fontName || '';
           customCss.fontUrl = parts.fontUrl || '';
+          customCss.fontKind = parts.fontKind || '';
           customCss.free = parts.free || '';
           const themes = {};
           for (const [id, entry] of Object.entries(parts.themes || {})) {
@@ -1401,6 +1440,7 @@ const cmsApp = createApp({
           customCss.loadedParts = {
             fontName: customCss.fontName,
             fontUrl: customCss.fontUrl,
+            fontKind: customCss.fontKind,
             themes: JSON.parse(JSON.stringify(themes)),
             free: customCss.free
           };
@@ -1755,7 +1795,7 @@ const cmsApp = createApp({
       customCss, customCssDirty, customCssReady, loadCustomCss, saveCustomCss, revalidatePreview,
       customCssPalette, customCssText, customCssRampRows, customCssSeed, customCssParts,
       setCustomCssSeed, restoreCustomCssTheme, resetCustomCssTheme,
-      resetAllCustomCss, confirmResetAllCustomCss, fontNameFromUrl,
+      resetAllCustomCss, confirmResetAllCustomCss, probeFontUrl,
       movingItem, movingFromGroup, dragOverGroup, backups, toast,
       totalItems, widgetValueLabel, widgetValuePlaceholder,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,
