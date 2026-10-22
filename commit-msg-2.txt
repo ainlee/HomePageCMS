@@ -1,7 +1,0 @@
-Guess the font name from the file name, and refuse to write a broken rule
-
-Pasting a font file address wrote a rule with an empty family name and no
-font-family at all: valid CSS that does nothing. A stylesheet says what its
-font is called, a font file does not, so the name of the file is used as a
-starting point and the user can change it. The address is still refused when
-there is no name, instead of writing something that cannot work.
