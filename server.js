@@ -801,7 +801,14 @@ app.post('/api/homepage-font-probe', async (req, res) => {
     if (looksLikeFont) {
       return res.json({
         success: true,
-        data: { kind: 'font', families: [], status: response.status }
+        // The file does not say what it is called, so the name of the file is
+        // the best guess. The user can change it.
+        data: {
+          kind: 'font',
+          families: [],
+          suggestion: customCssLib.suggestFontName(url),
+          status: response.status
+        }
       });
     }
     const text = await readAtMost(response, LIMIT);

@@ -627,7 +627,14 @@ const cmsApp = createApp({
         customCss.fontKind = data.kind || '';
         customCss.fontFamilies = data.families || [];
         if (data.kind === 'font') {
-          customCss.fontNote = t('appearance.fontIsFile');
+          // A font file does not say what it is called, so the name of the file
+          // is used as a starting point. The user can change it.
+          if (!customCss.fontName && data.suggestion) {
+            customCss.fontName = data.suggestion;
+            customCss.fontNote = t('appearance.fontSuggested', { name: data.suggestion });
+          } else {
+            customCss.fontNote = t('appearance.fontIsFile');
+          }
         } else if (customCss.fontFamilies.length) {
           customCss.fontNote = t('appearance.fontFound', { name: customCss.fontFamilies.join(', ') });
           // The name goes in by itself when the field is still empty.
@@ -1078,12 +1085,16 @@ const cmsApp = createApp({
           }));
         }
         // The custom stylesheet is only written when it changed.
-        if (customCssDirty.value) {
+        // A font without a name is not written; the rest still is.
+        if (customCssDirty.value && !fontNeedsName()) {
           jobs.push(apiFetch('/api/homepage-custom-css', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ parts: customCssParts.value, hash: customCss.hash })
           }));
+        }
+        if (customCssDirty.value && fontNeedsName()) {
+          showToast(t('toast.fontNameRequired'), 'error');
         }
         const [svcRes, bmRes, appRes, cssRes] = await Promise.all(jobs);
         const svcJson = await svcRes.json();
@@ -1387,7 +1398,10 @@ const cmsApp = createApp({
           const saved = json.data.values || values;
           for (const field of appearanceFields) appearanceLoaded[field] = saved[field] || '';
         }
-        if (customCssDirty.value) await saveCustomCss();
+        if (customCssDirty.value) {
+          const written = await saveCustomCss();
+          if (!written) return false;
+        }
         // The dashboard keeps its settings in the memory of its process, so the
         // preview would show the old colours without this.
         const revalidated = await revalidatePreview();
@@ -1417,6 +1431,13 @@ const cmsApp = createApp({
       } catch (err) {
         return false;
       }
+    }
+
+    // A font without a name cannot be used: the family name is what the
+    // font-family refers to. The save is refused instead of writing a rule
+    // that does nothing.
+    function fontNeedsName() {
+      return !!(customCss.fontUrl || '').trim() && !(customCss.fontName || '').trim();
     }
 
     // ---- Custom CSS ----
@@ -1454,6 +1475,10 @@ const cmsApp = createApp({
     }
 
     async function saveCustomCss() {
+      if (fontNeedsName()) {
+        showToast(t('toast.fontNameRequired'), 'error');
+        return false;
+      }
       const res = await apiFetch('/api/homepage-custom-css', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

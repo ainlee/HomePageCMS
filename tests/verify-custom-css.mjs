@@ -64,6 +64,9 @@ ws.addEventListener('message', (m) => {
     confirmSeen = true;
     cdp.send('Page.handleJavaScriptDialog', { accept: true }, sessionId);
   }
+  if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
+    console.log('PAGE ERROR:', JSON.stringify(msg.params.args.map((a) => a.value || a.description)).slice(0, 300));
+  }
 });
 
 function stop() {
@@ -273,6 +276,9 @@ const probeFile = await (await fetch(APP_URL + '/api/homepage-font-probe', {
 check('a font file is recognised as a font file',
   probeFile.success && probeFile.data.kind === 'font', JSON.stringify(probeFile.data));
 
+check('a font file gets a name suggested from its file name',
+  probeFile.success && probeFile.data.suggestion === 'Cubic 11', JSON.stringify(probeFile.data));
+
 const probeMissing = await (await fetch(APP_URL + '/api/homepage-font-probe', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -321,12 +327,76 @@ check('a stylesheet is written as an import at the top',
   (withStylesheet.data.content || '').replace(/^\s*(?:\/\*[\s\S]*?\*\/\s*)*/, '').startsWith('@import'),
   (withStylesheet.data.content || '').slice(0, 120));
 
+// A font without a name cannot be used, so it is not written.
+const withoutName = await (await fetch(APP_URL + '/api/homepage-custom-css', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    hash: withStylesheet.hash,
+    parts: {
+      fontName: '',
+      fontUrl: 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/Cubic_11_1.100_R.woff2',
+      fontKind: 'font',
+      themes: {},
+      free: ''
+    }
+  })
+})).json();
+check('a font without a name is not written',
+  withoutName.success && !withoutName.data.content.includes('@font-face') &&
+  !withoutName.data.content.includes('font-family: ""'),
+  (withoutName.data.content || '').slice(0, 120));
+
 // Put the file back the way it was.
 await fetch(APP_URL + '/api/homepage-custom-css', {
   method: 'PUT',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ hash: withStylesheet.hash, parts: { fontName: '', fontUrl: '', fontKind: '', themes: {}, free: '' } })
+  body: JSON.stringify({ hash: withoutName.hash, parts: { fontName: '', fontUrl: '', fontKind: '', themes: {}, free: '' } })
 });
+
+// In the interface: an address without a name is refused, with a message.
+// The file is put into a known state first, so the check can tell that it was
+// not written over.
+const beforeRefusal = await (await fetch(APP_URL + '/api/homepage-custom-css')).json();
+await fetch(APP_URL + '/api/homepage-custom-css', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    hash: beforeRefusal.hash,
+    parts: {
+      fontName: 'Keep Me',
+      fontUrl: 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/Cubic_11_1.100_R.woff2',
+      fontKind: 'font',
+      themes: {},
+      free: ''
+    }
+  })
+});
+await ev(`(() => {
+  const inputs = document.querySelectorAll('.font-fields input');
+  inputs[0].value = '';
+  inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+  inputs[1].value = 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/Cubic_11_1.100_R.woff2';
+  inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+  return true;
+})()`);
+await sleep(300);
+await ev(`(() => { document.querySelector('.appearance-head .btn-primary').click(); return true; })()`);
+// The toast is only shown for three seconds, so it is looked for while it is up.
+let toastText = '';
+for (let i = 0; i < 40; i++) {
+  toastText = await ev(`(() => {
+    const el = document.querySelector('.toast');
+    return el ? el.textContent.trim() : '';
+  })()`);
+  if (toastText) break;
+  await sleep(100);
+}
+const refused = await (await fetch(APP_URL + '/api/homepage-custom-css')).json();
+check('the interface refuses a font without a name',
+  (refused.data.content || '').includes('Keep Me'),
+  (refused.data.content || '').slice(0, 100));
+check('the refusal is explained', toastText.length > 5, toastText);
 
 stop();
 cleanup();
