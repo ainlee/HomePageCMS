@@ -99,10 +99,26 @@ check('the stylesheet is written to custom.css', after.data.content.includes('ht
 
 // The rule has to win against the built-in one. Homepage loads custom.css before
 // its own stylesheet, so the selector needs the higher specificity.
-// The live dashboard is behind a cache, so the query string keeps the check from
-// reading a cached copy of the file.
-const served = await (await fetch('https://home.928202333.xyz/api/config/custom.css?cb=' + Date.now())).text();
-check('Homepage serves the new stylesheet', served.includes('html.theme-rose'), served.slice(0, 120));
+// The dashboard has to serve the new stylesheet, and it has to serve it without a
+// cache in the way: a proxy that still holds the old copy would hide the change
+// for hours. The request carries no cache buster on purpose.
+const preview = JSON.parse(await (await fetch(APP_URL + '/api/settings')).text()).data.previewUrl || '';
+if (preview) {
+  const origin = new URL(preview).origin;
+  let served = '';
+  let status = 0;
+  try {
+    const res = await fetch(origin + '/api/config/custom.css');
+    status = res.status;
+    served = await res.text();
+  } catch (err) {
+    served = 'unreachable: ' + err.message;
+  }
+  check('the dashboard serves the new stylesheet', served.includes('html.theme-rose'),
+    'status=' + status + ' ' + served.slice(0, 120));
+} else {
+  console.log('SKIP  the dashboard serves the new stylesheet (no preview URL configured)');
+}
 
 // Put the file back the way it was.
 await fetch(APP_URL + '/api/homepage-custom-css', {

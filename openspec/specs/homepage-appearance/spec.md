@@ -63,6 +63,17 @@ SHALL 提供配色助手，讓使用者以一個種子色產生十個色階（50
 - **WHEN** 使用者存檔自訂 CSS
 - **THEN** 備份目錄出現一份存檔前的 `custom.css`
 
+### Requirement: 自訂 CSS 要能即時送到瀏覽器
+
+系統 SHALL 讓存檔後的自訂 CSS 立即到達瀏覽器。部署在快取代理（CDN）之後時，
+系統 SHALL 確保 `/api/config/custom.css` 不被該代理快取；否則使用者改完樣式，
+儀表板仍會套用舊的樣式長達數小時。
+
+#### Scenario: 改完樣式立刻生效
+
+- **WHEN** 使用者存檔自訂 CSS 之後重新載入儀表板
+- **THEN** 儀表板使用新的樣式，而不是先前被快取的舊版本
+
 ### Requirement: 存檔前備份
 
 系統 SHALL 在覆寫 `settings.yaml` 前把原檔複製到備份目錄，並 SHALL 以暫存檔再改名
