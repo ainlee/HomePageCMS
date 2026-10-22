@@ -207,7 +207,7 @@
                     <span class="swatch-name">{{ c.id }}</span>
                   </button>
                 </div>
-                <p v-if="appearance.color && !knownPaletteIds.includes(appearance.color)" class="appearance-note">
+                <p v-if="appearance.color && !knownPaletteIds.includes(appearance.color)" class="appearance-warning">
                   {{ t('appearance.unknownColor', { color: appearance.color }) }}
                 </p>
               </div>
@@ -286,8 +286,14 @@
                 </div>
               </div>
 
-              <div class="appearance-section">
-                <h3 class="appearance-title">{{ t('appearance.customCssTitle') }}</h3>
+              <div class="appearance-section appearance-section-split">
+                <h3 class="appearance-title">
+                  {{ t('appearance.customCssTitle') }}
+                  <span class="info-mark" tabindex="0" role="note" :aria-label="t('appearance.customCssCacheNote')">
+                    <i class="mdi mdi-alert-circle"></i>
+                    <span class="info-tip" role="tooltip">{{ t('appearance.customCssCacheNote') }}</span>
+                  </span>
+                </h3>
                 <p class="appearance-note">{{ t('appearance.customCssHint') }}</p>
                 <div class="form-grid appearance-grid">
                   <div class="form-group">
@@ -319,7 +325,6 @@
                 </div>
                 <textarea v-model="customCss.content" class="css-editor" spellcheck="false"
                           :placeholder="t('appearance.customCssPlaceholder')"></textarea>
-                <p class="appearance-note">{{ t('appearance.customCssCacheNote') }}</p>
               </div>
             </div>
           </template>

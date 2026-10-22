@@ -922,6 +922,15 @@ const cmsApp = createApp({
             customCss.loaded = customCss.content;
             customCss.exists = true;
           }
+          // The dashboard caches its settings in the memory of its process.
+          if (appRes || cssRes) {
+            const revalidated = await revalidatePreview();
+            if (!revalidated) {
+              showToast(t('toast.revalidateNeeded'), 'error');
+              saving.value = false;
+              return;
+            }
+          }
            showToast(t('toast.saved'));
            refreshPreview();
          } else {
@@ -1201,11 +1210,33 @@ const cmsApp = createApp({
           for (const field of appearanceFields) appearanceLoaded[field] = saved[field] || '';
         }
         if (customCssDirty.value) await saveCustomCss();
+        // The dashboard keeps its settings in the memory of its process, so the
+        // preview would show the old colours without this.
+        const revalidated = await revalidatePreview();
+        if (!revalidated) {
+          showToast(t('toast.revalidateNeeded'), 'error');
+          return true;
+        }
         showToast(t('toast.saved'));
         refreshPreview();
         return true;
       } catch (err) {
         showToast(t('toast.saveFailed', { msg: err.message }), 'error');
+        return false;
+      }
+    }
+
+    // Ask the dashboard to forget its cached settings. The request goes through
+    // the editor's server, so the browser's cross-origin rules do not stop it.
+    async function revalidatePreview() {
+      try {
+        const res = await apiFetch('/api/homepage-revalidate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const json = await res.json();
+        return !!(json.success && json.data && json.data.revalidated);
+      } catch (err) {
         return false;
       }
     }
@@ -1616,7 +1647,7 @@ const cmsApp = createApp({
       rampShades,
       appearanceChoices, appearanceChoiceLabel, loadAppearance, saveAppearance, openAppearanceTab,
       customCss, customCssDirty, customCssReady, loadCustomCss, generateCustomRamp,
-      applyCustomRamp, removeCustomRamp, saveCustomCss,
+      applyCustomRamp, removeCustomRamp, saveCustomCss, revalidatePreview,
       movingItem, movingFromGroup, dragOverGroup, backups, toast,
       totalItems, widgetValueLabel, widgetValuePlaceholder,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,

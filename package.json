@@ -10,7 +10,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/verify-ini.mjs && node tests/verify-collapse.mjs && node tests/verify-mobile.mjs && node tests/verify-visible-viewport.mjs && node tests/verify-i18n.mjs && node tests/verify-themes.mjs && node tests/verify-bookmarks.mjs && node tests/verify-appearance.mjs && node tests/verify-custom-css.mjs",
+    "test": "node tests/verify-ini.mjs && node tests/verify-collapse.mjs && node tests/verify-mobile.mjs && node tests/verify-visible-viewport.mjs && node tests/verify-i18n.mjs && node tests/verify-themes.mjs && node tests/verify-bookmarks.mjs && node tests/verify-appearance.mjs && node tests/verify-custom-css.mjs && node tests/verify-appearance-hints.mjs",
     "test:collapse": "node tests/verify-collapse.mjs",
     "test:mobile": "node tests/verify-mobile.mjs",
     "test:viewport": "node tests/verify-visible-viewport.mjs",
@@ -20,6 +20,7 @@
     "test:bookmarks": "node tests/verify-bookmarks.mjs",
     "test:appearance": "node tests/verify-appearance.mjs",
     "test:custom-css": "node tests/verify-custom-css.mjs",
+    "test:appearance-hints": "node tests/verify-appearance-hints.mjs",
     "shots": "node tests/shots-visible.mjs",
     "reindex": "node tools/reindex.mjs"
   },

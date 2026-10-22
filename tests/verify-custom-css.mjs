@@ -91,6 +91,48 @@ check('the stylesheet holds the ten shades',
     .every((name) => text.includes('--color-' + name + ':')), '');
 check('the block is marked so it can be replaced', text.includes('HomePageCMS: rose'), '');
 
+// The custom CSS sits on its own, separated from the settings fields.
+const split = await ev(`(() => {
+  const section = document.querySelector('.appearance-section-split');
+  if (!section) return 'no section';
+  const style = getComputedStyle(section);
+  const title = section.querySelector('.appearance-title');
+  const previous = section.previousElementSibling;
+  return JSON.stringify({
+    borderTop: style.borderTopWidth,
+    borderStyle: style.borderTopStyle,
+    previousExists: !!previous,
+    previousBorder: previous ? getComputedStyle(previous).borderTopWidth : 'none',
+    title: title.textContent.trim()
+  });
+})()`);
+const splitInfo = JSON.parse(split);
+check('a line separates the custom CSS from the fields above',
+  splitInfo.borderTop !== '0px' && splitInfo.borderStyle !== 'none', split);
+check('only the custom CSS section has the line',
+  splitInfo.previousBorder === '0px' || splitInfo.previousBorder === '', split);
+
+// The mark next to the title carries a note that appears on hover and on focus.
+const tip = await ev(`(() => {
+  const mark = document.querySelector('.info-mark');
+  if (!mark) return 'no mark';
+  const tipEl = mark.querySelector('.info-tip');
+  const before = getComputedStyle(tipEl).visibility;
+  mark.focus();
+  const after = getComputedStyle(tipEl).visibility;
+  const rect = tipEl.getBoundingClientRect();
+  return JSON.stringify({
+    before, after,
+    text: tipEl.textContent.trim().length,
+    width: Math.round(rect.width),
+    height: Math.round(rect.height)
+  });
+})()`);
+const tipInfo = JSON.parse(tip);
+check('the note next to the title appears on focus',
+  tipInfo.before === 'hidden' && tipInfo.after === 'visible', tip);
+check('the note has a readable size', tipInfo.width > 100 && tipInfo.height > 20, tip);
+
 // Save it and look at the file.
 await click('.appearance-head .btn-primary');
 await sleep(2000);

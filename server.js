@@ -726,6 +726,35 @@ app.post('/api/homepage-custom-css/ramp', (req, res) => {
   }
 });
 
+// POST /api/homepage-revalidate - make the dashboard forget its cached settings
+//
+// Homepage keeps the whole dashboard payload in the memory of its process, and
+// only /api/revalidate clears it. Without this the preview would keep showing the
+// old colours after a save. The call goes out from the server, so it is not
+// stopped by the browser's cross-origin rules.
+app.post('/api/homepage-revalidate', async (req, res) => {
+  const preview = previewUrlSetting().value;
+  if (!preview) {
+    return res.status(400).json({ success: false, error: '尚未設定預覽網址' });
+  }
+  let target;
+  try {
+    target = new URL('/api/revalidate', preview).toString();
+  } catch (err) {
+    return res.status(400).json({ success: false, error: '預覽網址格式不正確' });
+  }
+  try {
+    const response = await fetch(target, { method: 'GET', headers: { Accept: 'application/json' } });
+    // The endpoint answers with JSON when it worked. When the dashboard has
+    // access protection, it answers with something else and the caller has to
+    // press the refresh button on the dashboard itself.
+    const ok = response.ok && (response.headers.get('content-type') || '').includes('application/json');
+    res.json({ success: !!ok, data: { status: response.status, revalidated: !!ok } });
+  } catch (err) {
+    res.json({ success: false, data: { error: err.message } });
+  }
+});
+
 // GET /api/settings - the runtime settings the editor is running with
 app.get('/api/settings', (req, res) => {
   res.json({ success: true, data: settingsPayload() });

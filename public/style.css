@@ -590,6 +590,14 @@ body {
 .appearance-section { margin-bottom: 18px; }
 .appearance-section:last-child { margin-bottom: 0; }
 
+/* The custom CSS sits on its own: a line separates it from the fields that go
+   into settings.yaml, because they are two different files. */
+.appearance-section-split {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
 .appearance-title {
   margin: 0 0 10px;
   font-size: 13px;
@@ -645,6 +653,85 @@ body {
   margin: 10px 0 0;
   font-size: 12px;
   color: var(--text-dim);
+}
+
+/* A value Homepage does not know breaks the dashboard, so it is called out. */
+.appearance-warning {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: var(--radius);
+}
+
+/* The little mark next to a title, with a note that appears on hover and on
+   keyboard focus. */
+.info-mark {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  color: var(--text-dim);
+  cursor: help;
+  vertical-align: middle;
+}
+
+.info-mark:hover,
+.info-mark:focus { color: var(--accent); }
+.info-mark:focus { outline: none; }
+
+.info-tip {
+  position: absolute;
+  top: 120%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: 260px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 400;
+  text-align: left;
+  white-space: normal;
+  color: var(--text);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  /* Hidden until the mark is hovered or focused. */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s;
+}
+
+.info-mark:hover .info-tip,
+.info-mark:focus .info-tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* A phone has no hover, and the note would not fit next to the mark anyway.
+   There it sits under the title, next to the mark, and is always there. */
+@media (max-width: 768px) {
+  .info-mark {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .info-tip {
+    position: static;
+    flex: 1;
+    width: auto;
+    margin-top: 0;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    box-shadow: none;
+  }
 }
 
 /* The style fields sit two to a row, so the first one does not span the whole
