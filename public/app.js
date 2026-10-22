@@ -1,4 +1,6 @@
 const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
+// The colour ramp maths, shared with the server (lib/ramp.js).
+const ramp = window.HomepageRamp;
 
 const cmsApp = createApp({
   setup() {
@@ -445,21 +447,162 @@ const cmsApp = createApp({
     const appearanceReady = ref(false);
 
     // Homepage's custom.css. It is the official place for custom CSS and the only
-    // way to change something Homepage has no setting for. The editor keeps the
-    // text as it is and writes it back unchanged, so hand-written rules survive.
+    // way to change something Homepage has no setting for.
+    //
+    // The file is kept in parts: the font, one block per customised palette, and
+    // the content the user wrote themselves. The editor changes the parts and
+    // the server puts the file together again, so the order never goes wrong.
     const customCss = reactive({
-      content: '',
-      loaded: '',
+      fontName: '',
+      fontUrl: '',
+      // Palette id -> { css, seed }
+      themes: {},
+      free: '',
       hash: null,
       exists: false,
-      // The palette that gets the custom ramp, and the seed colour of that ramp.
-      palette: 'slate',
-      seed: '#64748b',
-      shades: {},
-      css: ''
+      // The official colour of every palette, and the parts as they were loaded,
+      // so a change can be taken back.
+      official: {},
+      loadedParts: null
     });
     const customCssReady = ref(false);
-    const customCssDirty = computed(() => customCss.content !== customCss.loaded);
+
+    // The palette the custom CSS section works on: the one picked above.
+    const customCssPalette = computed(() => appearance.color || 'slate');
+
+    // The parts as they would be written right now.
+    const customCssParts = computed(() => {
+      const themes = {};
+      for (const [id, entry] of Object.entries(customCss.themes)) {
+        const css = typeof entry === 'string' ? entry : (entry && entry.css) || '';
+        if (css.trim()) themes[id] = css;
+      }
+      return {
+        fontName: customCss.fontName,
+        fontUrl: customCss.fontUrl,
+        themes,
+        free: customCss.free
+      };
+    });
+
+    const customCssDirty = computed(() => {
+      const loaded = customCss.loadedParts;
+      if (!loaded) return false;
+      return JSON.stringify(customCssParts.value) !== JSON.stringify(loaded);
+    });
+
+    // The seed colour of a palette: what the user picked, or the official colour
+    // when the palette was not touched.
+    function customCssSeed(paletteId) {
+      const entry = customCss.themes[paletteId];
+      if (entry && entry.seed) return entry.seed;
+      const fromCss = ramp.readShades(entry ? entry.css : '')['500'];
+      if (fromCss) return fromCss;
+      return customCss.official[paletteId] || '#64748b';
+    }
+
+    // The CSS of the palette as it is now. A palette without a block shows what
+    // it would look like, without that being written to the file.
+    const customCssText = computed({
+      get() {
+        const id = customCssPalette.value;
+        const entry = customCss.themes[id];
+        if (entry) return typeof entry === 'string' ? entry : entry.css;
+        const shades = ramp.generateRamp(customCssSeed(id));
+        return shades ? ramp.rampCss(id, shades) : '';
+      },
+      set(value) {
+        const id = customCssPalette.value;
+        const entry = customCss.themes[id];
+        if (entry && typeof entry === 'object') {
+          entry.css = value;
+          entry.seed = ramp.readShades(value)['500'] || entry.seed;
+        } else {
+          customCss.themes[id] = { css: value, seed: ramp.readShades(value)['500'] || customCssSeed(id) };
+        }
+      }
+    });
+
+    // The two rows of shades: the ones the seed gives, and the ones in the text.
+    // The chip that is really in effect gets the outline.
+    const customCssRampRows = computed(() => {
+      const id = customCssPalette.value;
+      const auto = ramp.generateRamp(customCssSeed(id)) || {};
+      const manual = ramp.readShades(customCssText.value);
+      return ramp.SHADE_NAMES.map((name) => {
+        const autoValue = auto[name] || '';
+        const manualValue = manual[name] || '';
+        const differs = !!manualValue && manualValue.toUpperCase() !== autoValue.toUpperCase();
+        return {
+          name,
+          auto: autoValue,
+          manual: manualValue,
+          // A shade the text does not set falls back to the official one.
+          effective: differs ? 'manual' : 'auto'
+        };
+      });
+    });
+
+    // A new seed replaces the whole block of that palette, so the shades and
+    // the text stay in step.
+    function setCustomCssSeed(paletteId, seed) {
+      const shades = ramp.generateRamp(seed);
+      if (!shades) return;
+      customCss.themes[paletteId] = { css: ramp.rampCss(paletteId, shades), seed };
+    }
+
+    // Put the palette back to the state that was loaded from the file.
+    function restoreCustomCssTheme(paletteId) {
+      const loaded = customCss.loadedParts;
+      if (!loaded) return;
+      const before = loaded.themes && loaded.themes[paletteId];
+      if (before) {
+        customCss.themes[paletteId] = { css: before.css, seed: before.seed || customCssSeed(paletteId) };
+      } else {
+        delete customCss.themes[paletteId];
+      }
+    }
+
+    // Put the palette back to the colour Homepage ships.
+    function resetCustomCssTheme(paletteId) {
+      delete customCss.themes[paletteId];
+    }
+
+    // Throw away every customisation: the palettes and the font.
+    function resetAllCustomCss() {
+      customCss.themes = {};
+      customCss.fontName = '';
+      customCss.fontUrl = '';
+    }
+
+    // Throw everything away and write it at once, so there is no doubt about
+    // what is on the disk.
+    async function confirmResetAllCustomCss() {
+      if (!confirm(t('appearance.resetAllConfirm'))) return false;
+      resetAllCustomCss();
+      try {
+        await saveCustomCss();
+        // The settings file is read again, so what is on the disk is what the
+        // form shows.
+        await loadAppearance();
+        await revalidatePreview();
+        showToast(t('toast.saved'));
+        refreshPreview();
+        return true;
+      } catch (err) {
+        showToast(t('toast.saveFailed', { msg: err.message }), 'error');
+        return false;
+      }
+    }
+
+    // The name of the font out of a Google Fonts address, so the user does not
+    // have to type it twice.
+    function fontNameFromUrl(url) {
+      const match = String(url || '').match(/[?&]family=([^&]+)/);
+      if (!match) return '';
+      const value = decodeURIComponent(match[1]).split(':')[0].replace(/\+/g, ' ').trim();
+      return value;
+    }
 
     // Drag state
     let dragSource = null;
@@ -901,7 +1044,7 @@ const cmsApp = createApp({
           jobs.push(apiFetch('/api/homepage-custom-css', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: customCss.content, hash: customCss.hash })
+            body: JSON.stringify({ parts: customCssParts.value, hash: customCss.hash })
           }));
         }
         const [svcRes, bmRes, appRes, cssRes] = await Promise.all(jobs);
@@ -919,8 +1062,8 @@ const cmsApp = createApp({
           }
           if (cssRes) {
             customCss.hash = cssJson.hash || null;
-            customCss.loaded = customCss.content;
             customCss.exists = true;
+            customCss.loadedParts = JSON.parse(JSON.stringify(customCssParts.value));
           }
           // The dashboard caches its settings in the memory of its process.
           if (appRes || cssRes) {
@@ -1161,9 +1304,6 @@ const cmsApp = createApp({
 
     const appearancePalette = computed(() => appearanceMeta.value.palette || []);
     const knownPaletteIds = computed(() => appearancePalette.value.map((c) => c.id));
-    // The names of the ten shades, in the order the ramp shows them.
-    const rampShades = computed(() => appearanceMeta.value.shades || []);
-
     // The appearance is read when the tab is opened, not on every page load: the
     // file is only needed when the user goes looking at it.
     function openAppearanceTab() {
@@ -1242,18 +1382,28 @@ const cmsApp = createApp({
     }
 
     // ---- Custom CSS ----
-    // The block the editor writes is marked, so it can be replaced later without
-    // touching the rules the user wrote themselves.
-    function cssBlockStart(palette) { return '/* >>> HomePageCMS: ' + palette + ' >>> */'; }
-    function cssBlockEnd(palette) { return '/* <<< HomePageCMS: ' + palette + ' <<< */'; }
-
     async function loadCustomCss() {
       try {
         const res = await apiFetch('/api/homepage-custom-css');
         const json = await res.json();
         if (json.success) {
-          customCss.content = json.data.content || '';
-          customCss.loaded = json.data.content || '';
+          const parts = json.data.parts || {};
+          customCss.fontName = parts.fontName || '';
+          customCss.fontUrl = parts.fontUrl || '';
+          customCss.free = parts.free || '';
+          const themes = {};
+          for (const [id, entry] of Object.entries(parts.themes || {})) {
+            themes[id] = { css: entry.css || '', seed: entry.seed || '' };
+          }
+          customCss.themes = themes;
+          customCss.official = json.data.official || {};
+          // A copy of what was loaded, so a change can be taken back.
+          customCss.loadedParts = {
+            fontName: customCss.fontName,
+            fontUrl: customCss.fontUrl,
+            themes: JSON.parse(JSON.stringify(themes)),
+            free: customCss.free
+          };
           customCss.hash = json.hash || null;
           customCss.exists = !!json.data.exists;
           customCssReady.value = true;
@@ -1263,62 +1413,19 @@ const cmsApp = createApp({
       }
     }
 
-    // A ramp of ten shades from the seed colour. The server does the maths, so
-    // there is one implementation of it.
-    async function generateCustomRamp() {
-      try {
-        const res = await apiFetch('/api/homepage-custom-css/ramp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ palette: customCss.palette, seed: customCss.seed })
-        });
-        const json = await res.json();
-        if (!json.success) throw new Error(json.error || t('toast.unknownError'));
-        customCss.shades = json.data.shades || {};
-        customCss.css = json.data.css || '';
-      } catch (err) {
-        showToast(t('toast.generateRampFailed', { msg: err.message }), 'error');
-      }
-    }
-
-    // Put the generated ramp into the text, replacing the block of the same
-    // palette if there is one.
-    function applyCustomRamp() {
-      if (!customCss.css) return;
-      const start = cssBlockStart(customCss.palette);
-      const end = cssBlockEnd(customCss.palette);
-      const block = start + '\n' + customCss.css + '\n' + end;
-      const from = customCss.content.indexOf(start);
-      const to = customCss.content.indexOf(end);
-      if (from !== -1 && to !== -1 && to > from) {
-        customCss.content = customCss.content.slice(0, from) + block + customCss.content.slice(to + end.length);
-      } else {
-        const base = customCss.content.replace(/\s+$/, '');
-        customCss.content = base ? base + '\n\n' + block + '\n' : block + '\n';
-      }
-    }
-
-    // Take the block of a palette out of the text again.
-    function removeCustomRamp() {
-      const start = cssBlockStart(customCss.palette);
-      const end = cssBlockEnd(customCss.palette);
-      const from = customCss.content.indexOf(start);
-      const to = customCss.content.indexOf(end);
-      if (from === -1 || to === -1 || to < from) return;
-      customCss.content = (customCss.content.slice(0, from) + customCss.content.slice(to + end.length)).replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n';
-    }
-
     async function saveCustomCss() {
       const res = await apiFetch('/api/homepage-custom-css', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: customCss.content, hash: customCss.hash })
+        body: JSON.stringify({ parts: customCssParts.value, hash: customCss.hash })
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || t('toast.unknownError'));
       customCss.hash = json.hash || null;
-      customCss.loaded = customCss.content;
       customCss.exists = true;
+      // What is on the disk is now what the form holds, so it is the state a
+      // change can be taken back to.
+      customCss.loadedParts = JSON.parse(JSON.stringify(customCssParts.value));
       return true;
     }
 
@@ -1644,10 +1751,11 @@ const cmsApp = createApp({
       showBookmarkGroupModal, showBookmarkItemModal,
       editingBookmarkGroupId, editingBookmarkItemId, editingBookmarkGroup, editingBookmarkItem,
       appearance, appearanceMeta, appearancePalette, knownPaletteIds, appearanceDirty, appearanceReady,
-      rampShades,
       appearanceChoices, appearanceChoiceLabel, loadAppearance, saveAppearance, openAppearanceTab,
-      customCss, customCssDirty, customCssReady, loadCustomCss, generateCustomRamp,
-      applyCustomRamp, removeCustomRamp, saveCustomCss, revalidatePreview,
+      customCss, customCssDirty, customCssReady, loadCustomCss, saveCustomCss, revalidatePreview,
+      customCssPalette, customCssText, customCssRampRows, customCssSeed, customCssParts,
+      setCustomCssSeed, restoreCustomCssTheme, resetCustomCssTheme,
+      resetAllCustomCss, confirmResetAllCustomCss, fontNameFromUrl,
       movingItem, movingFromGroup, dragOverGroup, backups, toast,
       totalItems, widgetValueLabel, widgetValuePlaceholder,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,

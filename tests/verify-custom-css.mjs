@@ -1,13 +1,14 @@
-// Checks the custom CSS part of the appearance tab: a ramp is generated from a seed
-// colour, it lands in custom.css, and the file is put back the way it was.
-import { APP_URL, connect, createProfile, evalJson, freePort, launchChrome, sleep, trackChrome } from './helpers.mjs';
-
-const PORT = await freePort();
-const PROFILE = createProfile('hp-verify-custom-css');
-const chrome = launchChrome({ port: PORT, profile: PROFILE });
-const cleanup = trackChrome(chrome, PROFILE);
-const { cdp, sessionId, ws } = await connect(PORT);
-const ev = (e) => evalJson(cdp, sessionId, e);
+// Checks the custom CSS section: every palette has its own customisation, the
+// two rows of shades show which one is really in effect, the font is written as
+// an import at the top of the file, and the buttons put things back.
+//
+// The test runs against a settings directory of its own, so the installation
+// that is running is never touched. The directory is removed when it is done.
+import { connect, createProfile, evalJson, freePort, launchChrome, sleep, trackChrome } from './helpers.mjs';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 let passed = 0;
 const failures = [];
@@ -29,149 +30,213 @@ async function waitFor(expression, tries = 100) {
   return false;
 }
 
-const click = (selector) => ev(`(() => {
-  const el = document.querySelector(${JSON.stringify(selector)});
-  if (!el) return false;
-  el.click();
-  return true;
-})()`);
+const configDir = mkdtempSync(join(tmpdir(), 'hcms-css-'));
+mkdirSync(join(configDir, 'backups'), { recursive: true });
+writeFileSync(join(configDir, 'settings.yaml'), '---\n# test\n\nallowedHosts:\n  - localhost\n', 'utf8');
+writeFileSync(join(configDir, 'services.yaml'), '- Test:\n    - Example:\n        href: https://example.com\n', 'utf8');
+writeFileSync(join(configDir, 'bookmarks.yaml'), '- Group:\n    - Item:\n        - abbr: I\n          href: https://example.com\n', 'utf8');
+
+const PORT = await freePort();
+const editor = spawn(process.execPath, ['server.js'], {
+  cwd: process.cwd(),
+  env: Object.assign({}, process.env, {
+    PORT: String(PORT),
+    HOST: '127.0.0.1',
+    HOMEPAGE_CONFIG_PATH: configDir,
+    HOMEPAGE_BACKUP_PATH: join(configDir, 'backups')
+  }),
+  stdio: 'ignore'
+});
+const APP_URL = 'http://127.0.0.1:' + PORT;
+
+const CHROME_PORT = await freePort();
+const PROFILE = createProfile('hp-verify-css');
+const chrome = launchChrome({ port: CHROME_PORT, profile: PROFILE });
+const cleanup = trackChrome(chrome, PROFILE);
+const { cdp, sessionId, ws } = await connect(CHROME_PORT);
+const ev = (e) => evalJson(cdp, sessionId, e);
+
+// The confirm() of the reset button.
+let confirmSeen = false;
+ws.addEventListener('message', (m) => {
+  const msg = JSON.parse(m.data);
+  if (msg.method === 'Page.javascriptDialogOpening') {
+    confirmSeen = true;
+    cdp.send('Page.handleJavaScriptDialog', { accept: true }, sessionId);
+  }
+});
+
+function stop() {
+  try { editor.kill(); } catch {}
+  try { rmSync(configDir, { recursive: true, force: true }); } catch {}
+}
+process.on('exit', stop);
+
+let up = false;
+for (let i = 0; i < 60; i++) {
+  try {
+    const res = await fetch(APP_URL + '/api/auth');
+    if (res.ok) { up = true; break; }
+  } catch {}
+  await sleep(250);
+}
+if (!up) {
+  console.log('FAIL  the editor started');
+  stop();
+  process.exit(1);
+}
 
 const api = async () => (await (await fetch(APP_URL + '/api/homepage-custom-css')).json());
-const before = await api();
-const originalContent = before.data.content || '';
 
 await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }, sessionId);
 await cdp.send('Page.navigate', { url: APP_URL }, sessionId);
 await waitFor(`!!(document.querySelector('#app') && document.querySelector('#app').__vue_app__)`);
 await sleep(800);
-
-await click('.tab-bar .tab-btn:nth-child(3)');
+await ev(`(() => { [...document.querySelectorAll('.tab-btn')].find(b => b.textContent.includes('外觀')).click(); return true; })()`);
 const opened = await waitFor(`!!document.querySelector('.appearance-panel')`);
 check('the appearance tab opens', opened);
 await sleep(800);
 
-check('the tab has a stylesheet editor', await ev(`!!document.querySelector('.css-editor')`));
-check('the editor shows the file', await ev(`document.querySelector('.css-editor').value.length === ${JSON.stringify(originalContent.length)}`));
+// The two rows of shades.
+const rows = await ev(`(() => {
+  const list = [...document.querySelectorAll('.ramp-row')];
+  return JSON.stringify(list.map((r) => ({
+    chips: r.querySelectorAll('.ramp-chip').length,
+    effective: [...r.querySelectorAll('.ramp-chip')].filter((c) => c.classList.contains('effective')).length
+  })));
+})()`);
+const rowInfo = JSON.parse(rows);
+check('the shades are in two rows of ten', rowInfo.length === 2 && rowInfo.every((r) => r.chips === 10), rows);
+check('without a hand edit the computed row is the one in effect',
+  rowInfo[0].effective === 10 && rowInfo[1].effective === 0, rows);
 
-// Pick a palette and a seed colour, then generate the ramp.
+// Pick a palette and change its seed.
+await ev(`(() => { document.querySelector('.palette-swatch[title="blue"]').click(); return true; })()`);
+await sleep(400);
+const picked = await ev(`(() => {
+  const text = document.querySelector('.css-editor').value;
+  const match = text.match(/html\\.theme-([a-z]+)/);
+  return JSON.stringify({ theme: match ? match[1] : '' });
+})()`);
+check('the text area shows the palette that was picked', JSON.parse(picked).theme === 'blue', picked);
+
 await ev(`(() => {
-  // Seven selects carry the style fields; the palette of the custom ramp is the
-  // eighth one.
-  const select = document.querySelectorAll('.appearance-panel select')[7];
-  select.value = 'rose';
-  select.dispatchEvent(new Event('change', { bubbles: true }));
-  const color = document.querySelector('.appearance-panel input[type="color"]');
-  color.value = '#e11d48';
-  // Vue binds v-model on a colour input to the input event.
-  color.dispatchEvent(new Event('input', { bubbles: true }));
-  color.dispatchEvent(new Event('change', { bubbles: true }));
+  const input = document.querySelector('.seed-input');
+  input.value = '#e11d48';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
   return true;
 })()`);
-await sleep(300);
-await click('.appearance-actions .btn:nth-child(1)');
-const generated = await waitFor(`document.querySelectorAll('.ramp-chip').length === 10`);
-check('the ramp shows ten shades', generated,
-  String(await ev(`document.querySelectorAll('.ramp-chip').length`)));
-
-const chipColour = await ev(`(() => {
-  const chips = [...document.querySelectorAll('.ramp-chip')];
-  return JSON.stringify(chips.map((c) => getComputedStyle(c).backgroundColor));
+await sleep(400);
+const afterSeed = await ev(`(() => {
+  const text = document.querySelector('.css-editor').value;
+  const match = text.match(/--color-500:\\s*(\\d+ \\d+ \\d+)/);
+  const rows = [...document.querySelectorAll('.ramp-row')].map((r) =>
+    [...r.querySelectorAll('.ramp-chip')].filter((c) => c.classList.contains('effective')).length);
+  return JSON.stringify({ seed: match ? match[1] : '', effective: rows });
 })()`);
-const chipColours = JSON.parse(chipColour);
-// The seed colour has to be the 500 shade, and the ramp runs from light to dark.
-check('the shades are painted', chipColours.length === 10 && chipColours[5] === 'rgb(225, 29, 72)', chipColour);
+check('the new seed is in the text', JSON.parse(afterSeed).seed === '225 29 72', afterSeed);
+check('the computed row is still the one in effect', JSON.parse(afterSeed).effective[0] === 10, afterSeed);
 
-// Put the ramp into the stylesheet.
-await click('.appearance-actions .btn:nth-child(2)');
-await sleep(300);
-const text = await ev(`document.querySelector('.css-editor').value`);
-check('the ramp lands in the stylesheet', text.includes('html.theme-rose'), text.slice(0, 120));
-check('the stylesheet holds the ten shades',
-  ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900']
-    .every((name) => text.includes('--color-' + name + ':')), '');
-check('the block is marked so it can be replaced', text.includes('HomePageCMS: rose'), '');
-
-// The custom CSS sits on its own, separated from the settings fields.
-const split = await ev(`(() => {
-  const section = document.querySelector('.appearance-section-split');
-  if (!section) return 'no section';
-  const style = getComputedStyle(section);
-  const title = section.querySelector('.appearance-title');
-  const previous = section.previousElementSibling;
+// Hand edit one shade: that chip becomes the one in effect.
+await ev(`(() => {
+  const el = document.querySelector('.css-editor');
+  el.value = el.value.replace('--color-300: 245 179 194;', '--color-300: 1 2 3;');
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  return true;
+})()`);
+await sleep(400);
+const afterEdit = await ev(`(() => {
+  const rows = [...document.querySelectorAll('.ramp-row')];
+  const auto = [...rows[0].querySelectorAll('.ramp-chip')];
+  const manual = [...rows[1].querySelectorAll('.ramp-chip')];
   return JSON.stringify({
-    borderTop: style.borderTopWidth,
-    borderStyle: style.borderTopStyle,
-    previousExists: !!previous,
-    previousBorder: previous ? getComputedStyle(previous).borderTopWidth : 'none',
-    title: title.textContent.trim()
+    autoEffective: auto.filter((c) => c.classList.contains('effective')).length,
+    manualEffective: manual.filter((c) => c.classList.contains('effective')).length,
+    manualEffectiveIndex: manual.findIndex((c) => c.classList.contains('effective')),
+    manualChipColor: manual[3] ? getComputedStyle(manual[3]).backgroundColor : ''
   });
 })()`);
-const splitInfo = JSON.parse(split);
-check('a line separates the custom CSS from the fields above',
-  splitInfo.borderTop !== '0px' && splitInfo.borderStyle !== 'none', split);
-check('only the custom CSS section has the line',
-  splitInfo.previousBorder === '0px' || splitInfo.previousBorder === '', split);
+const editInfo = JSON.parse(afterEdit);
+check('a hand edited shade is the one in effect',
+  editInfo.manualEffective === 1 && editInfo.manualEffectiveIndex === 3, afterEdit);
+check('the hand edited shade shows the new colour', editInfo.manualChipColor === 'rgb(1, 2, 3)', afterEdit);
 
-// The mark next to the title carries a note that appears on hover and on focus.
-const tip = await ev(`(() => {
-  const mark = document.querySelector('.info-mark');
-  if (!mark) return 'no mark';
-  const tipEl = mark.querySelector('.info-tip');
-  const before = getComputedStyle(tipEl).visibility;
-  mark.focus();
-  const after = getComputedStyle(tipEl).visibility;
-  const rect = tipEl.getBoundingClientRect();
+// Another palette keeps its own state.
+await ev(`(() => { document.querySelector('.palette-swatch[title="cyan"]').click(); return true; })()`);
+await sleep(400);
+const other = await ev(`(() => {
+  const text = document.querySelector('.css-editor').value;
+  const match = text.match(/html\\.theme-([a-z]+)/);
+  return JSON.stringify({ theme: match ? match[1] : '', hasEdit: text.includes('1 2 3') });
+})()`);
+check('another palette shows its own block',
+  JSON.parse(other).theme === 'cyan' && !JSON.parse(other).hasEdit, other);
+
+// The font: a name and an address.
+await ev(`(() => {
+  const inputs = document.querySelectorAll('.font-fields input');
+  inputs[0].value = 'Noto Sans TC';
+  inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+  inputs[1].value = 'https://fonts.googleapis.com/css2?family=Noto+Sans+TC&display=swap';
+  inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+  inputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+  return true;
+})()`);
+await sleep(400);
+
+// Save.
+await ev(`(() => { document.querySelector('.appearance-head .btn-primary').click(); return true; })()`);
+await sleep(2500);
+const saved = await api();
+const content = saved.data.content || '';
+check('the file holds the font block first',
+  content.indexOf('@import') !== -1 && content.indexOf('@import') < content.indexOf('html.theme-'), content.slice(0, 160));
+check('the font block carries the name', content.includes('Noto Sans TC'), '');
+check('the file holds the customised palette', content.includes('html.theme-blue') && content.includes('1 2 3'), '');
+check('the palette that was not touched has no block', !content.includes('html.theme-cyan'), '');
+
+// The palette that was customised comes back after a reload.
+await ev(`(() => { document.querySelector('.appearance-head .btn-icon').click(); return true; })()`);
+await sleep(1500);
+await ev(`(() => { document.querySelector('.palette-swatch[title="blue"]').click(); return true; })()`);
+await sleep(600);
+const reloaded = await ev(`(() => {
+  const text = document.querySelector('.css-editor').value;
   return JSON.stringify({
-    before, after,
-    text: tipEl.textContent.trim().length,
-    width: Math.round(rect.width),
-    height: Math.round(rect.height)
+    hasEdit: text.includes('1 2 3'),
+    font: document.querySelectorAll('.font-fields input')[0].value
   });
 })()`);
-const tipInfo = JSON.parse(tip);
-check('the note next to the title appears on focus',
-  tipInfo.before === 'hidden' && tipInfo.after === 'visible', tip);
-check('the note has a readable size', tipInfo.width > 100 && tipInfo.height > 20, tip);
+check('the hand edit is still there after a reload', JSON.parse(reloaded).hasEdit, reloaded);
+check('the font is still there after a reload', JSON.parse(reloaded).font === 'Noto Sans TC', reloaded);
 
-// Save it and look at the file.
-await click('.appearance-head .btn-primary');
-await sleep(2000);
-const after = await api();
-check('the stylesheet is written to custom.css', after.data.content.includes('html.theme-rose'), '');
+// The reset button of one palette takes it back to the official colour.
+await ev(`(() => {
+  const buttons = [...document.querySelectorAll('.appearance-actions .btn')];
+  const reset = buttons.find((b) => b.textContent.includes('重置'));
+  reset.click();
+  return true;
+})()`);
+await sleep(400);
+const afterReset = await ev(`(() => ({
+  text: document.querySelector('.css-editor').value
+}))()`);
+check('the reset button takes the palette back', !afterReset.text.includes('1 2 3'), afterReset.text.slice(0, 80));
 
-// The rule has to win against the built-in one. Homepage loads custom.css before
-// its own stylesheet, so the selector needs the higher specificity.
-// The dashboard has to serve the new stylesheet, and it has to serve it without a
-// cache in the way: a proxy that still holds the old copy would hide the change
-// for hours. The request carries no cache buster on purpose.
-const preview = JSON.parse(await (await fetch(APP_URL + '/api/settings')).text()).data.previewUrl || '';
-if (preview) {
-  const origin = new URL(preview).origin;
-  let served = '';
-  let status = 0;
-  try {
-    const res = await fetch(origin + '/api/config/custom.css');
-    status = res.status;
-    served = await res.text();
-  } catch (err) {
-    served = 'unreachable: ' + err.message;
-  }
-  check('the dashboard serves the new stylesheet', served.includes('html.theme-rose'),
-    'status=' + status + ' ' + served.slice(0, 120));
-} else {
-  console.log('SKIP  the dashboard serves the new stylesheet (no preview URL configured)');
-}
+// The reset of everything asks first.
+confirmSeen = false;
+await ev(`(() => {
+  const button = [...document.querySelectorAll('.appearance-head .btn')].find((b) => b.textContent.includes('全部重置'));
+  button.click();
+  return true;
+})()`);
+await sleep(2500);
+check('the reset of everything asks first', confirmSeen, '');
+const afterAll = await api();
+check('the reset of everything clears the file',
+  (afterAll.data.content || '').trim() === '', JSON.stringify((afterAll.data.content || '').slice(0, 80)));
 
-// Put the file back the way it was.
-await fetch(APP_URL + '/api/homepage-custom-css', {
-  method: 'PUT',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ content: originalContent, hash: after.hash })
-});
-const restored = await api();
-check('the original stylesheet is back', restored.data.content === originalContent, JSON.stringify(restored.data.content.slice(0, 60)));
-
-ws.close(); chrome.kill();
+stop();
 cleanup();
 
 console.log('');

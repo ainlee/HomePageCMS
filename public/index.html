@@ -6,6 +6,7 @@
   <title>Homepage 編輯器</title>
   <link rel="stylesheet" href="/vendor/mdi/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="style.css">
+  <script src="/vendor/ramp.js"></script>
 </head>
 <body>
   <div id="app">
@@ -189,6 +190,9 @@
                 <button @click="saveAppearance" class="btn btn-small btn-primary" :disabled="!appearanceDirty && !customCssDirty">
                   <i class="mdi mdi-content-save"></i> {{ t('appearance.save') }}
                 </button>
+                <button @click="confirmResetAllCustomCss" class="btn btn-small btn-secondary" :title="t('appearance.resetAll')">
+                  <i class="mdi mdi-restore-alert"></i> {{ t('appearance.resetAll') }}
+                </button>
                 <button @click="loadAppearance" class="btn btn-icon btn-secondary" :title="t('appearance.reload')">
                   <i class="mdi mdi-refresh"></i>
                 </button>
@@ -295,35 +299,57 @@
                   </span>
                 </h3>
                 <p class="appearance-note">{{ t('appearance.customCssHint') }}</p>
-                <div class="form-grid appearance-grid">
-                  <div class="form-group">
-                    <label>{{ t('appearance.customCssPalette') }}</label>
-                    <select v-model="customCss.palette">
-                      <option v-for="c in appearancePalette" :key="c.id" :value="c.id">{{ c.id }}</option>
-                    </select>
+                <div class="form-group">
+                  <label>{{ t('appearance.font') }}</label>
+                  <div class="font-fields">
+                    <input v-model="customCss.fontName" type="text" class="font-name"
+                           :disabled="!!appearance.font" :placeholder="t('appearance.fontNamePlaceholder')">
+                    <input v-model="customCss.fontUrl" type="text" class="font-url"
+                           :disabled="!!appearance.font" :placeholder="t('appearance.fontUrlPlaceholder')"
+                           @change="customCss.fontName = customCss.fontName || fontNameFromUrl(customCss.fontUrl)">
                   </div>
-                  <div class="form-group">
-                    <label>{{ t('appearance.customCssSeed') }}</label>
-                    <input type="color" v-model="customCss.seed" @change="generateCustomRamp">
+                  <p class="appearance-note">{{ t('appearance.fontHint') }}</p>
+                </div>
+
+                <div class="form-group">
+                  <label>{{ t('appearance.paletteOf', { id: customCssPalette }) }}</label>
+                  <div class="seed-fields">
+                    <span class="seed-swatch" :style="{ background: customCss.official[customCssPalette] }"
+                          :title="t('appearance.officialColour')"></span>
+                    <span class="seed-label">{{ t('appearance.officialColour') }}</span>
+                    <span class="seed-swatch" :style="{ background: customCssSeed(customCssPalette) }"></span>
+                    <input type="color" class="seed-input"
+                           :value="customCssSeed(customCssPalette)"
+                           @input="setCustomCssSeed(customCssPalette, $event.target.value)">
+                    <span class="seed-label">{{ t('appearance.seedColour') }}</span>
                   </div>
                 </div>
-                <div class="ramp-preview" v-if="customCss.css">
-                  <span v-for="name in rampShades" :key="name" class="ramp-chip"
-                        :style="{ background: customCss.shades[name] }"
-                        :title="name + ' ' + customCss.shades[name]"></span>
+
+                <div class="ramp-rows">
+                  <div class="ramp-row">
+                    <span class="ramp-row-label">{{ t('appearance.rampAuto') }}</span>
+                    <span v-for="row in customCssRampRows" :key="'auto-' + row.name" class="ramp-chip"
+                          :class="{ effective: row.effective === 'auto' }"
+                          :style="{ background: row.auto }"
+                          :title="row.name + ' ' + row.auto"></span>
+                  </div>
+                  <div class="ramp-row">
+                    <span class="ramp-row-label">{{ t('appearance.rampManual') }}</span>
+                    <span v-for="row in customCssRampRows" :key="'manual-' + row.name" class="ramp-chip"
+                          :class="{ effective: row.effective === 'manual' }"
+                          :style="{ background: row.manual || row.auto }"
+                          :title="row.name + ' ' + (row.manual || row.auto)"></span>
+                  </div>
                 </div>
                 <div class="appearance-actions">
-                  <button @click="generateCustomRamp" class="btn btn-small btn-secondary">
-                    <i class="mdi mdi-palette"></i> {{ t('appearance.customCssGenerate') }}
+                  <button @click="restoreCustomCssTheme(customCssPalette)" class="btn btn-small btn-secondary">
+                    <i class="mdi mdi-undo"></i> {{ t('appearance.restore') }}
                   </button>
-                  <button @click="applyCustomRamp" class="btn btn-small btn-secondary" :disabled="!customCss.css">
-                    <i class="mdi mdi-content-paste"></i> {{ t('appearance.customCssApply') }}
-                  </button>
-                  <button @click="removeCustomRamp" class="btn btn-small btn-secondary">
-                    <i class="mdi mdi-delete"></i> {{ t('appearance.customCssRemove') }}
+                  <button @click="resetCustomCssTheme(customCssPalette)" class="btn btn-small btn-secondary">
+                    <i class="mdi mdi-restore"></i> {{ t('appearance.resetTheme') }}
                   </button>
                 </div>
-                <textarea v-model="customCss.content" class="css-editor" spellcheck="false"
+                <textarea v-model="customCssText" class="css-editor" spellcheck="false"
                           :placeholder="t('appearance.customCssPlaceholder')"></textarea>
               </div>
             </div>

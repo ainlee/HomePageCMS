@@ -750,18 +750,82 @@ body {
   cursor: pointer;
 }
 
-/* The ten shades of the generated ramp. */
-.ramp-preview {
-  display: flex;
-  gap: 4px;
+/* The two rows of shades: the ones the seed gives, and the ones in the text.
+   The chip that is really in effect carries the outline. */
+.ramp-rows {
   margin: 4px 0 10px;
+}
+
+.ramp-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.ramp-row-label {
+  width: 72px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 .ramp-chip {
   flex: 1;
-  height: 26px;
+  min-width: 18px;
+  height: 24px;
   border-radius: 4px;
   border: 1px solid var(--border);
+}
+
+/* The shade that will really be used. */
+.ramp-chip.effective {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* The two colour fields of a palette. */
+.seed-fields {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.seed-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.seed-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.seed-input {
+  width: 40px;
+  height: 26px;
+  padding: 1px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* The name of the font and the address it comes from. */
+.font-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.font-fields input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .appearance-actions {

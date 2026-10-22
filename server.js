@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const i18n = require('./lib/i18n');
 const themeLib = require('./lib/themes');
 const appearanceLib = require('./lib/homepage-appearance');
+const customCssLib = require('./lib/custom-css');
 const { parseIni } = require('./lib/ini');
 // The version and the repository come from the package file, so the version in the
 // interface is always the version that is running.
@@ -55,6 +56,11 @@ app.use(express.static(path.join(__dirname, 'public'), {
 app.use('/vendor/js-yaml', express.static(path.join(__dirname, 'node_modules', 'js-yaml', 'dist')));
 app.use('/vendor/vue', express.static(path.join(__dirname, 'node_modules', 'vue', 'dist')));
 app.use('/vendor/mdi', express.static(path.join(__dirname, 'node_modules', '@mdi', 'font')));
+// The colour ramp maths, shared with the browser so both use the same one.
+app.get('/vendor/ramp.js', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('application/javascript').send(fs.readFileSync(path.join(PROJECT_DIR, 'lib', 'ramp.js'), 'utf8'));
+});
 
 // ---- Settings -------------------------------------------------------------
 // The editor's own settings live in a YAML file. It is read on every request, so a
@@ -672,23 +678,64 @@ app.get('/api/homepage-custom-css', (req, res) => {
     const file = homepageCustomCssFile();
     const exists = fs.existsSync(file);
     const content = exists ? fs.readFileSync(file, 'utf8') : '';
-    res.json({ success: true, data: { content, exists, path: file }, hash: fileHash(file) });
+    // The file is taken apart, so the editor can work on the font, on each
+    // palette and on the content the user wrote themselves.
+    const parts = customCssLib.parse(content);
+    const themes = {};
+    for (const [id, body] of Object.entries(parts.themes)) {
+      themes[id] = { css: body, seed: customCssLib.seedOf(body) };
+    }
+    res.json({
+      success: true,
+      data: {
+        content,
+        parts: { fontName: parts.fontName, fontUrl: parts.fontUrl, themes, free: parts.free },
+        official: appearanceLib.PALETTE_IDS.reduce((out, id) => {
+          out[id] = appearanceLib.officialColor(id);
+          return out;
+        }, {}),
+        exists,
+        path: file
+      },
+      hash: fileHash(file)
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // PUT /api/homepage-custom-css - write custom.css with a backup
+//
+// The editor sends the parts it holds, and the server assembles them: the font
+// block first (an @import only works at the top of a stylesheet), then one block
+// per customised palette, then the content the user wrote themselves.
 app.put('/api/homepage-custom-css', (req, res) => {
   try {
     const file = homepageCustomCssFile();
     const conflict = checkUnchanged(file, req.body && req.body.hash);
     if (conflict) return res.status(409).json({ success: false, error: conflict });
 
-    const content = req.body && typeof req.body.content === 'string' ? req.body.content : null;
-    if (content === null) {
-      return res.status(400).json({ success: false, error: '設定值格式不正確: content' });
+    const body = req.body || {};
+    const parts = body.parts;
+    if (!parts || typeof parts !== 'object') {
+      return res.status(400).json({ success: false, error: '設定值格式不正確: parts' });
     }
+    const themes = {};
+    const given = parts.themes && typeof parts.themes === 'object' ? parts.themes : {};
+    for (const [id, value] of Object.entries(given)) {
+      const css = typeof value === 'string' ? value : (value && typeof value.css === 'string' ? value.css : '');
+      if (!css.trim()) continue;
+      if (!appearanceLib.PALETTE[id]) {
+        return res.status(400).json({ success: false, error: '設定值格式不正確: theme' });
+      }
+      themes[id] = css;
+    }
+    const content = customCssLib.assemble({
+      fontName: String(parts.fontName || ''),
+      fontUrl: String(parts.fontUrl || ''),
+      themes,
+      free: String(parts.free || '')
+    });
     // The file is served to every visitor of the dashboard, so it stays small.
     if (content.length > 1024 * 1024) {
       return res.status(400).json({ success: false, error: '設定值格式不正確: content' });
