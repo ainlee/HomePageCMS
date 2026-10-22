@@ -689,7 +689,7 @@ app.get('/api/homepage-custom-css', (req, res) => {
       success: true,
       data: {
         content,
-        parts: { fontName: parts.fontName, fontUrl: parts.fontUrl, fontKind: parts.fontKind, themes, free: parts.free },
+        parts: { font: parts.font, themes, free: parts.free },
         official: appearanceLib.PALETTE_IDS.reduce((out, id) => {
           out[id] = appearanceLib.officialColor(id);
           return out;
@@ -730,10 +730,14 @@ app.put('/api/homepage-custom-css', (req, res) => {
       }
       themes[id] = css;
     }
+    const font = parts.font && typeof parts.font === 'object' ? parts.font : {};
     const content = customCssLib.assemble({
-      fontName: String(parts.fontName || ''),
-      fontUrl: String(parts.fontUrl || ''),
-      fontKind: String(parts.fontKind || ''),
+      font: {
+        cdn: String(font.cdn || ''),
+        kind: String(font.kind || ''),
+        families: Array.isArray(font.families) ? font.families.map(String) : [],
+        local: String(font.local || '')
+      },
       themes,
       free: String(parts.free || '')
     });
@@ -801,14 +805,9 @@ app.post('/api/homepage-font-probe', async (req, res) => {
     if (looksLikeFont) {
       return res.json({
         success: true,
-        // The file does not say what it is called, so the name of the file is
-        // the best guess. The user can change it.
-        data: {
-          kind: 'font',
-          families: [],
-          suggestion: customCssLib.suggestFontName(url),
-          status: response.status
-        }
+        // A font file does not say what it is called, and it does not have to:
+        // the editor gives it a label of its own.
+        data: { kind: 'font', families: [], status: response.status }
       });
     }
     const text = await readAtMost(response, LIMIT);

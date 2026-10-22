@@ -175,17 +175,32 @@ const other = await ev(`(() => {
 check('another palette shows its own block',
   JSON.parse(other).theme === 'cyan' && !JSON.parse(other).hasEdit, other);
 
-// The font: a name and an address.
+// The font: the address of a font, and the font on the visitor's machine. The
+// three fields sit together, so the built-in one is next to the other two.
 await ev(`(() => {
   const inputs = document.querySelectorAll('.font-fields input');
-  inputs[0].value = 'Noto Sans TC';
+  inputs[0].value = 'https://fonts.googleapis.com/css2?family=Noto+Sans+TC&display=swap';
   inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-  inputs[1].value = 'https://fonts.googleapis.com/css2?family=Noto+Sans+TC&display=swap';
+  inputs[0].dispatchEvent(new Event('change', { bubbles: true }));
   inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
-  inputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+  inputs[1].value = 'Microsoft JhengHei';
+  inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
   return true;
 })()`);
-await sleep(400);
+await sleep(1200);
+
+const fontGroup = await ev(`(() => {
+  const group = document.querySelector('.font-fields');
+  if (!group) return 'no group';
+  return JSON.stringify({
+    selects: group.querySelectorAll('select').length,
+    inputs: group.querySelectorAll('input').length,
+    labels: [...group.querySelectorAll('label')].map((l) => l.textContent.trim())
+  });
+})()`);
+const fontInfo = JSON.parse(fontGroup);
+check('the built-in font sits next to the other two',
+  fontInfo.selects === 1 && fontInfo.inputs === 2, fontGroup);
 
 // Save.
 await ev(`(() => { document.querySelector('.appearance-head .btn-primary').click(); return true; })()`);
@@ -194,7 +209,8 @@ const saved = await api();
 const content = saved.data.content || '';
 check('the file holds the font block first',
   content.indexOf('@import') !== -1 && content.indexOf('@import') < content.indexOf('html.theme-'), content.slice(0, 160));
-check('the font block carries the name', content.includes('Noto Sans TC'), '');
+check('the font block asks for the font of the address first',
+  /font-family:\s*"Noto Sans TC",\s*"Microsoft JhengHei",\s*sans-serif/.test(content), '');
 check('the file holds the customised palette', content.includes('html.theme-blue') && content.includes('1 2 3'), '');
 check('the palette that was not touched has no block', !content.includes('html.theme-cyan'), '');
 
@@ -207,11 +223,14 @@ const reloaded = await ev(`(() => {
   const text = document.querySelector('.css-editor').value;
   return JSON.stringify({
     hasEdit: text.includes('1 2 3'),
-    font: document.querySelectorAll('.font-fields input')[0].value
+    cdn: document.querySelectorAll('.font-fields input')[0].value,
+    local: document.querySelectorAll('.font-fields input')[1].value
   });
 })()`);
 check('the hand edit is still there after a reload', JSON.parse(reloaded).hasEdit, reloaded);
-check('the font is still there after a reload', JSON.parse(reloaded).font === 'Noto Sans TC', reloaded);
+check('the font is still there after a reload',
+  JSON.parse(reloaded).cdn.includes('Noto+Sans+TC') &&
+  JSON.parse(reloaded).local === 'Microsoft JhengHei', reloaded);
 
 // The reset button of one palette takes it back to the official colour.
 await ev(`(() => {
@@ -276,9 +295,6 @@ const probeFile = await (await fetch(APP_URL + '/api/homepage-font-probe', {
 check('a font file is recognised as a font file',
   probeFile.success && probeFile.data.kind === 'font', JSON.stringify(probeFile.data));
 
-check('a font file gets a name suggested from its file name',
-  probeFile.success && probeFile.data.suggestion === 'Cubic 11', JSON.stringify(probeFile.data));
-
 const probeMissing = await (await fetch(APP_URL + '/api/homepage-font-probe', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -294,9 +310,12 @@ const withFile = await (await fetch(APP_URL + '/api/homepage-custom-css', {
   body: JSON.stringify({
     hash: (await (await fetch(APP_URL + '/api/homepage-custom-css')).json()).hash,
     parts: {
-      fontName: 'Cubic 11',
-      fontUrl: 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/Cubic_11_1.100_R.woff2',
-      fontKind: 'font',
+      font: {
+        cdn: 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/Cubic_11_1.100_R.woff2',
+        kind: 'font',
+        families: [],
+        local: 'Microsoft JhengHei'
+      },
       themes: {},
       free: ''
     }
@@ -306,6 +325,12 @@ check('a font file is written as a font-face rule',
   withFile.success && withFile.data.content.includes('@font-face') &&
   withFile.data.content.includes('Cubic_11_1.100_R.woff2') &&
   !withFile.data.content.includes('@import'), (withFile.data.content || '').slice(0, 120));
+check('the font of the visitor is the second source of the rule',
+  withFile.success && /src:.*url\([^)]*\)[^;]*,\s*local\("Microsoft JhengHei"\)/.test(withFile.data.content),
+  (withFile.data.content || '').slice(0, 200));
+check('the page asks for the font of the rule first',
+  withFile.success && withFile.data.content.includes('font-family: "homepagecmsfont"'),
+  (withFile.data.content || '').slice(0, 200));
 
 const withStylesheet = await (await fetch(APP_URL + '/api/homepage-custom-css', {
   method: 'PUT',
@@ -313,9 +338,12 @@ const withStylesheet = await (await fetch(APP_URL + '/api/homepage-custom-css', 
   body: JSON.stringify({
     hash: withFile.hash,
     parts: {
-      fontName: 'Cubic 11',
-      fontUrl: 'https://fontsapi.zeoseven.com/101/main/result.css',
-      fontKind: 'css',
+      font: {
+        cdn: 'https://fontsapi.zeoseven.com/101/main/result.css',
+        kind: 'css',
+        families: ['Cubic 11'],
+        local: 'Microsoft JhengHei'
+      },
       themes: {},
       free: ''
     }
@@ -326,77 +354,80 @@ check('a stylesheet is written as an import at the top',
   // Comments may come first; the first rule has to be the import.
   (withStylesheet.data.content || '').replace(/^\s*(?:\/\*[\s\S]*?\*\/\s*)*/, '').startsWith('@import'),
   (withStylesheet.data.content || '').slice(0, 120));
+check('a stylesheet is asked for by the name it registers',
+  withStylesheet.success && withStylesheet.data.content.includes('"Cubic 11", "Microsoft JhengHei", sans-serif'),
+  (withStylesheet.data.content || '').slice(0, 200));
 
-// A font without a name cannot be used, so it is not written.
-const withoutName = await (await fetch(APP_URL + '/api/homepage-custom-css', {
+// A font without a name on the visitor's machine is fine: the address is used
+// and the system font is the last fallback.
+const withoutLocal = await (await fetch(APP_URL + '/api/homepage-custom-css', {
   method: 'PUT',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     hash: withStylesheet.hash,
     parts: {
-      fontName: '',
-      fontUrl: 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/Cubic_11_1.100_R.woff2',
-      fontKind: 'font',
+      font: {
+        cdn: 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/Cubic_11_1.100_R.woff2',
+        kind: 'font',
+        families: [],
+        local: ''
+      },
       themes: {},
       free: ''
     }
   })
 })).json();
-check('a font without a name is not written',
-  withoutName.success && !withoutName.data.content.includes('@font-face') &&
-  !withoutName.data.content.includes('font-family: ""'),
-  (withoutName.data.content || '').slice(0, 120));
+check('a font without a name on the visitor machine is still written',
+  withoutLocal.success && withoutLocal.data.content.includes('@font-face') &&
+  !withoutLocal.data.content.includes('local('),
+  (withoutLocal.data.content || '').slice(0, 120));
 
 // Put the file back the way it was.
 await fetch(APP_URL + '/api/homepage-custom-css', {
   method: 'PUT',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ hash: withoutName.hash, parts: { fontName: '', fontUrl: '', fontKind: '', themes: {}, free: '' } })
+  body: JSON.stringify({
+    hash: withoutLocal.hash,
+    parts: { font: { cdn: '', kind: '', families: [], local: '' }, themes: {}, free: '' }
+  })
 });
 
-// In the interface: an address without a name is refused, with a message.
-// The file is put into a known state first, so the check can tell that it was
-// not written over.
-const beforeRefusal = await (await fetch(APP_URL + '/api/homepage-custom-css')).json();
+// A file that was written by an older version of the editor keeps its font:
+// the settings are read out of the CSS itself.
+const oldFormat = [
+  '/* >>> HomePageCMS: font >>> */',
+  "@import url('https://fontsapi.zeoseven.com/101/main/result.css');",
+  'html body {',
+  '  font-family: "Cubic 11", "Microsoft JhengHei", sans-serif;',
+  '}',
+  '/* <<< HomePageCMS: font <<< */',
+  ''
+].join(String.fromCharCode(10));
+const beforeOld = await (await fetch(APP_URL + '/api/homepage-custom-css')).json();
 await fetch(APP_URL + '/api/homepage-custom-css', {
   method: 'PUT',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    hash: beforeRefusal.hash,
+    hash: beforeOld.hash,
     parts: {
-      fontName: 'Keep Me',
-      fontUrl: 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/Cubic_11_1.100_R.woff2',
-      fontKind: 'font',
+      font: {
+        cdn: 'https://fontsapi.zeoseven.com/101/main/result.css',
+        kind: 'css',
+        families: ['Cubic 11'],
+        local: 'Microsoft JhengHei'
+      },
       themes: {},
-      free: ''
+      free: oldFormat
     }
   })
 });
-await ev(`(() => {
-  const inputs = document.querySelectorAll('.font-fields input');
-  inputs[0].value = '';
-  inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-  inputs[1].value = 'https://cdn.jsdelivr.net/npm/@fontpkg/cubic-11@1.100.1/Cubic_11_1.100_R.woff2';
-  inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
-  return true;
-})()`);
-await sleep(300);
-await ev(`(() => { document.querySelector('.appearance-head .btn-primary').click(); return true; })()`);
-// The toast is only shown for three seconds, so it is looked for while it is up.
-let toastText = '';
-for (let i = 0; i < 40; i++) {
-  toastText = await ev(`(() => {
-    const el = document.querySelector('.toast');
-    return el ? el.textContent.trim() : '';
-  })()`);
-  if (toastText) break;
-  await sleep(100);
-}
-const refused = await (await fetch(APP_URL + '/api/homepage-custom-css')).json();
-check('the interface refuses a font without a name',
-  (refused.data.content || '').includes('Keep Me'),
-  (refused.data.content || '').slice(0, 100));
-check('the refusal is explained', toastText.length > 5, toastText);
+const oldParsed = await (await fetch(APP_URL + '/api/homepage-custom-css')).json();
+check('a file of an older version keeps its font',
+  oldParsed.data.parts.font.cdn === 'https://fontsapi.zeoseven.com/101/main/result.css' &&
+  oldParsed.data.parts.font.kind === 'css' &&
+  oldParsed.data.parts.font.families.includes('Cubic 11') &&
+  oldParsed.data.parts.font.local === 'Microsoft JhengHei',
+  JSON.stringify(oldParsed.data.parts.font));
 
 stop();
 cleanup();

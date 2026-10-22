@@ -65,7 +65,7 @@ const fields = await ev(`JSON.stringify([...document.querySelectorAll('.appearan
 const labels = JSON.parse(fields);
 // The custom CSS section adds a select of its own, so the style fields are
 // looked for by name rather than counted.
-const styleFields = ['深淺色', '卡片模糊', '標題樣式', '卡片樣式', '區塊樣式', '圖示樣式', '字型'];
+const styleFields = ['深淺色', '卡片模糊', '標題樣式', '卡片樣式', '區塊樣式', '圖示樣式'];
 check('the appearance fields are there', styleFields.every((label) => labels.includes(label)), fields);
 
 // The form shows what the file holds.

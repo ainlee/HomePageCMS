@@ -816,11 +816,12 @@ body {
   flex-shrink: 0;
 }
 
-/* The name of the font and the address it comes from. */
+/* The three font fields: the one Homepage offers, the address of a font, and the
+   font on the visitor's own machine. */
 .font-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: 1fr 1.5fr 1fr;
+  gap: 0 16px;
 }
 
 .font-fields input:disabled {
@@ -1345,6 +1346,10 @@ body {
 
   .form-grid .form-group:first-child {
     grid-column: auto;
+  }
+
+  .font-fields {
+    grid-template-columns: 1fr;
   }
 }
 

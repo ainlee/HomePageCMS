@@ -453,12 +453,11 @@ const cmsApp = createApp({
     // the content the user wrote themselves. The editor changes the parts and
     // the server puts the file together again, so the order never goes wrong.
     const customCss = reactive({
-      fontName: '',
-      fontUrl: '',
-      // 'css' when the address is a stylesheet, 'font' when it is a font file.
-      fontKind: '',
-      // What the probe found in that address.
-      fontFamilies: [],
+      // The font: where it comes from, and the font on the visitor's own machine.
+      // cdn is empty when there is no address, kind is 'css' for a stylesheet and
+      // 'font' for a font file, and families are the names a stylesheet registers.
+      font: { cdn: '', kind: '', families: [], local: '' },
+      // What the probe found in the address.
       fontNote: '',
       // Palette id -> { css, seed }
       themes: {},
@@ -483,9 +482,12 @@ const cmsApp = createApp({
         if (css.trim()) themes[id] = css;
       }
       return {
-        fontName: customCss.fontName,
-        fontUrl: customCss.fontUrl,
-        fontKind: customCss.fontKind,
+        font: {
+          cdn: customCss.font.cdn,
+          kind: customCss.font.kind,
+          families: customCss.font.families,
+          local: customCss.font.local
+        },
         themes,
         free: customCss.free
       };
@@ -577,10 +579,7 @@ const cmsApp = createApp({
     // Throw away every customisation: the palettes and the font.
     function resetAllCustomCss() {
       customCss.themes = {};
-      customCss.fontName = '';
-      customCss.fontUrl = '';
-      customCss.fontKind = '';
-      customCss.fontFamilies = [];
+      customCss.font = { cdn: '', kind: '', families: [], local: '' };
       customCss.fontNote = '';
     }
 
@@ -605,13 +604,13 @@ const cmsApp = createApp({
     }
 
     // Find out what the address holds: a stylesheet with font-face rules, or a
-    // font file. The name of the family comes out of the stylesheet, so the user
-    // does not have to spell it out.
+    // font file. A stylesheet registers its font under the name the author gave
+    // it, and the page has to ask for that name, so it is read out here.
     async function probeFontUrl() {
-      const url = (customCss.fontUrl || '').trim();
+      const url = (customCss.font.cdn || '').trim();
       if (!url) {
-        customCss.fontKind = '';
-        customCss.fontFamilies = [];
+        customCss.font.kind = '';
+        customCss.font.families = [];
         customCss.fontNote = '';
         return;
       }
@@ -624,27 +623,20 @@ const cmsApp = createApp({
         const json = await res.json();
         if (!json.success) throw new Error(json.error || t('toast.unknownError'));
         const data = json.data || {};
-        customCss.fontKind = data.kind || '';
-        customCss.fontFamilies = data.families || [];
+        customCss.font.kind = data.kind || '';
+        customCss.font.families = data.families || [];
         if (data.kind === 'font') {
-          // A font file does not say what it is called, so the name of the file
-          // is used as a starting point. The user can change it.
-          if (!customCss.fontName && data.suggestion) {
-            customCss.fontName = data.suggestion;
-            customCss.fontNote = t('appearance.fontSuggested', { name: data.suggestion });
-          } else {
-            customCss.fontNote = t('appearance.fontIsFile');
-          }
-        } else if (customCss.fontFamilies.length) {
-          customCss.fontNote = t('appearance.fontFound', { name: customCss.fontFamilies.join(', ') });
-          // The name goes in by itself when the field is still empty.
-          if (!customCss.fontName) customCss.fontName = customCss.fontFamilies[0];
+          // A font file does not say what it is called, and it does not have to:
+          // the editor gives it a label of its own.
+          customCss.fontNote = t('appearance.fontIsFile');
+        } else if (customCss.font.families.length) {
+          customCss.fontNote = t('appearance.fontFound', { name: customCss.font.families.join(', ') });
         } else {
           customCss.fontNote = t('appearance.fontUnknown');
         }
       } catch (err) {
-        customCss.fontKind = '';
-        customCss.fontFamilies = [];
+        customCss.font.kind = '';
+        customCss.font.families = [];
         customCss.fontNote = t('appearance.fontProbeFailed', { msg: err.message });
       }
     }
@@ -1085,16 +1077,12 @@ const cmsApp = createApp({
           }));
         }
         // The custom stylesheet is only written when it changed.
-        // A font without a name is not written; the rest still is.
-        if (customCssDirty.value && !fontNeedsName()) {
+        if (customCssDirty.value) {
           jobs.push(apiFetch('/api/homepage-custom-css', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ parts: customCssParts.value, hash: customCss.hash })
           }));
-        }
-        if (customCssDirty.value && fontNeedsName()) {
-          showToast(t('toast.fontNameRequired'), 'error');
         }
         const [svcRes, bmRes, appRes, cssRes] = await Promise.all(jobs);
         const svcJson = await svcRes.json();
@@ -1433,13 +1421,6 @@ const cmsApp = createApp({
       }
     }
 
-    // A font without a name cannot be used: the family name is what the
-    // font-family refers to. The save is refused instead of writing a rule
-    // that does nothing.
-    function fontNeedsName() {
-      return !!(customCss.fontUrl || '').trim() && !(customCss.fontName || '').trim();
-    }
-
     // ---- Custom CSS ----
     async function loadCustomCss() {
       try {
@@ -1447,9 +1428,13 @@ const cmsApp = createApp({
         const json = await res.json();
         if (json.success) {
           const parts = json.data.parts || {};
-          customCss.fontName = parts.fontName || '';
-          customCss.fontUrl = parts.fontUrl || '';
-          customCss.fontKind = parts.fontKind || '';
+          const font = parts.font || {};
+          customCss.font = {
+            cdn: font.cdn || '',
+            kind: font.kind || '',
+            families: Array.isArray(font.families) ? font.families : [],
+            local: font.local || ''
+          };
           customCss.free = parts.free || '';
           const themes = {};
           for (const [id, entry] of Object.entries(parts.themes || {})) {
@@ -1459,9 +1444,7 @@ const cmsApp = createApp({
           customCss.official = json.data.official || {};
           // A copy of what was loaded, so a change can be taken back.
           customCss.loadedParts = {
-            fontName: customCss.fontName,
-            fontUrl: customCss.fontUrl,
-            fontKind: customCss.fontKind,
+            font: JSON.parse(JSON.stringify(customCss.font)),
             themes: JSON.parse(JSON.stringify(themes)),
             free: customCss.free
           };
@@ -1475,10 +1458,6 @@ const cmsApp = createApp({
     }
 
     async function saveCustomCss() {
-      if (fontNeedsName()) {
-        showToast(t('toast.fontNameRequired'), 'error');
-        return false;
-      }
       const res = await apiFetch('/api/homepage-custom-css', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

@@ -256,13 +256,31 @@
                       <option v-for="v in appearanceChoices('iconStyle')" :key="v" :value="v">{{ appearanceChoiceLabel('iconStyle', v) }}</option>
                     </select>
                   </div>
+                </div>
+              </div>
+
+              <div class="appearance-section">
+                <h3 class="appearance-title">{{ t('appearance.fontTitle') }}</h3>
+                <div class="font-fields">
                   <div class="form-group">
-                    <label>{{ t('appearance.font') }}</label>
+                    <label>{{ t('appearance.fontBuiltin') }}</label>
                     <select v-model="appearance.font">
                       <option v-for="v in appearanceChoices('font')" :key="v" :value="v">{{ appearanceChoiceLabel('font', v) }}</option>
                     </select>
                   </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.fontCdn') }}</label>
+                    <input v-model="customCss.font.cdn" type="text" :placeholder="t('appearance.fontCdnPlaceholder')"
+                           :disabled="!!appearance.font" @change="probeFontUrl()">
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('appearance.fontLocal') }}</label>
+                    <input v-model="customCss.font.local" type="text" :placeholder="t('appearance.fontLocalPlaceholder')"
+                           :disabled="!!appearance.font">
+                  </div>
                 </div>
+                <p class="appearance-note">{{ t('appearance.fontHint') }}</p>
+                <p class="appearance-note" v-if="customCss.fontNote">{{ customCss.fontNote }}</p>
               </div>
 
               <div class="appearance-section">
@@ -293,25 +311,13 @@
 
               <div class="appearance-section appearance-section-split">
                 <h3 class="appearance-title">
-                  {{ t('appearance.customCssTitle') }}
+                  {{ t('appearance.paletteCustomTitle') }}
                   <span class="info-mark" tabindex="0" role="note" :aria-label="t('appearance.customCssCacheNote')">
                     <i class="mdi mdi-alert-circle"></i>
                     <span class="info-tip" role="tooltip">{{ t('appearance.customCssCacheNote') }}</span>
                   </span>
                 </h3>
                 <p class="appearance-note">{{ t('appearance.customCssHint') }}</p>
-                <div class="form-group">
-                  <label>{{ t('appearance.font') }}</label>
-                  <div class="font-fields">
-                    <input v-model="customCss.fontName" type="text" class="font-name"
-                           :disabled="!!appearance.font" :placeholder="t('appearance.fontNamePlaceholder')">
-                    <input v-model="customCss.fontUrl" type="text" class="font-url"
-                           :disabled="!!appearance.font" :placeholder="t('appearance.fontUrlPlaceholder')"
-                           @change="probeFontUrl()">
-                  </div>
-                  <p class="appearance-note">{{ t('appearance.fontHint') }}</p>
-                  <p class="appearance-note" v-if="customCss.fontNote">{{ customCss.fontNote }}</p>
-                </div>
 
                 <div class="form-group">
                   <label>{{ t('appearance.paletteOf', { id: customCssPalette }) }}</label>
