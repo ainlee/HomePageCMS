@@ -198,6 +198,27 @@ const seed = JSON.parse(await ev(`(() => {
 check('the seed colour is picked on one swatch',
   seed.swatches === 1 && seed.pickers === 1 && seed.pickerRightOfOfficial, JSON.stringify(seed));
 
+// And it looks like the swatch next to it: same size, same border, same corners.
+const look = JSON.parse(await ev(`(() => {
+  const swatch = document.querySelector('.seed-swatch');
+  const picker = document.querySelector('.seed-input');
+  const a = getComputedStyle(swatch);
+  const b = getComputedStyle(picker);
+  const ra = swatch.getBoundingClientRect();
+  const rb = picker.getBoundingClientRect();
+  return JSON.stringify({
+    swatch: [Math.round(ra.width), Math.round(ra.height), a.borderRadius, a.borderTopWidth],
+    picker: [Math.round(rb.width), Math.round(rb.height), b.borderRadius, b.borderTopWidth],
+    // The browser draws the colour with an inset of its own; that inset is taken
+    // out, so the colour fills the picker.
+    wrapperPadding: getComputedStyle(picker, '::-webkit-color-swatch-wrapper').padding
+  });
+})()`));
+check('the picker looks like the swatch next to it',
+  look.swatch[0] === look.picker[0] && look.swatch[1] === look.picker[1] &&
+  look.swatch[2] === look.picker[2] && look.swatch[3] === look.picker[3] &&
+  look.wrapperPadding === '0px', JSON.stringify(look));
+
 // The real installation must not have been touched.
 const live = await (await fetch('http://localhost:3456/api/homepage-settings')).json();
 check('the running installation is not affected',

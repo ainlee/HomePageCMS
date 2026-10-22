@@ -839,14 +839,31 @@ body {
 }
 
 .form-group .seed-input {
-  width: 40px;
+  /* The picker looks like the swatch next to it: same size, same border, same
+     corners, and the colour fills the whole thing. */
+  width: 26px;
   height: 26px;
-  padding: 1px;
+  padding: 0;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 5px;
   cursor: pointer;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* The colour the browser draws inside the input. It has an inset of its own, so
+   it is taken out and the corners are rounded like the swatch. */
+.form-group .seed-input::-webkit-color-swatch-wrapper { padding: 0; }
+
+.form-group .seed-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.form-group .seed-input::-moz-color-swatch {
+  border: none;
+  border-radius: 4px;
 }
 
 /* The three font fields: the one Homepage offers, the address of a font, and the
