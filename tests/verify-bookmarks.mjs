@@ -100,10 +100,12 @@ check('the bookmark dialog has a name and an abbreviation field',
 await setInput('#bookmark-name', '測試書籤');
 await setInput('#bookmark-href', 'https://example.com/one');
 await setInput('#bookmark-abbr', 'T1');
+await setInput('#bookmark-description', '測試說明');
+await setInput('#bookmark-icon', 'mdi-test');
 await click('.bookmark-item-modal .btn-primary');
 const added = await waitFor(`!!document.querySelector('.item-card .item-name') &&
-  [...document.querySelectorAll('.item-card')].some((c) => c.textContent.includes('https://example.com/one'))`);
-check('the bookmark is added with its link', added);
+  [...document.querySelectorAll('.item-card')].some((c) => c.textContent.includes('測試書籤') && c.textContent.includes('測試說明'))`);
+check('the bookmark is added with its description', added);
 
 // Edit it: the dialog has to show the link, and the change has to reach the list.
 const row = '[...document.querySelectorAll(".item-card")].find((c) => c.textContent.includes("測試書籤"))';
@@ -114,8 +116,11 @@ check('the dialog shows the current name', await inputValue('#bookmark-name') ==
   String(await inputValue('#bookmark-name')));
 check('the dialog shows the current link', await inputValue('#bookmark-href') === 'https://example.com/one',
   String(await inputValue('#bookmark-href')));
+check('the dialog shows the description field', await ev(`!!document.querySelector('#bookmark-description')`));
+check('the dialog shows the icon field', await ev(`!!document.querySelector('#bookmark-icon')`));
 
 await setInput('#bookmark-href', 'https://example.com/two');
+await setInput('#bookmark-description', '');
 await click('.bookmark-item-modal .btn-primary');
 const changed = await waitFor(`(() => {
   const card = ${row};

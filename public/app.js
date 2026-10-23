@@ -463,10 +463,11 @@ const cmsApp = createApp({
     const editingGroup = reactive({ name: '', colSpan: 1 });
     const editingItem = reactive({
       name: '', href: '', description: '', target: '',
-      icon: '', iconType: 'mdi', widgetType: 'none', widgetValue: ''
+      icon: '', iconType: 'mdi', widgetType: 'none', widgetValue: '',
+      server: '', weight: '', namespace: '', app: '', podSelector: ''
     });
     const editingBookmarkGroup = reactive({ name: '' });
-    const editingBookmarkItem = reactive({ name: '', href: '', abbr: '' });
+    const editingBookmarkItem = reactive({ name: '', href: '', abbr: '', description: '', icon: '' });
     // The group an edited bookmark belongs to. It is not a form field, so it stays
     // out of the reactive object the dialog binds to.
     let bookmarkItemGroupId = null;
@@ -874,6 +875,8 @@ const cmsApp = createApp({
               name: itemName,
               abbr: conf.abbr || itemName.slice(0, 2).toUpperCase(),
               href: conf.href || '',
+              description: conf.description || '',
+              icon: conf.icon || '',
               source: conf
             };
           })
@@ -998,6 +1001,8 @@ const cmsApp = createApp({
         // model it, so it is kept exactly as it was.
         return { id: uid(), name: itemName, href: '', description: '', target: '',
           icon: '', iconType: 'mdi', widgetType: 'none', widgetValue: '',
+          server: '', weight: '', namespace: '', app: '', podSelector: '',
+          widgetsExtra: null,
           widgetDialect: 'none', nested: true, source: conf };
       }
       const config = conf && typeof conf === 'object' ? conf : {};
@@ -1013,6 +1018,12 @@ const cmsApp = createApp({
         target: config.target || '',
         icon, iconType,
         widgetType: widget.type, widgetValue: widget.value, widgetDialect: widget.dialect,
+        server: config.server || '',
+        weight: (config.weight ?? '') === '' ? '' : String(config.weight),
+        namespace: config.namespace || '',
+        app: config.app || '',
+        podSelector: config.podSelector || '',
+        widgetsExtra: Array.isArray(config.widgets) ? config.widgets : null,
         nested: false,
         source: config
       };
@@ -1173,10 +1184,23 @@ const cmsApp = createApp({
           }
           const conf = { ...(item.source || {}) };
           writeWidget(conf, item);
+          // Multi-widget setups stay as they are: the editor keeps editing the
+          // primary widget and leaves the extra widgets array untouched.
+          if (!Array.isArray(conf.widgets)) delete conf.widgets;
           setOrDelete(conf, 'href', item.href);
           setOrDelete(conf, 'target', item.target);
           setOrDelete(conf, 'description', item.description);
           setOrDelete(conf, 'icon', item.icon);
+          setOrDelete(conf, 'server', (item.server || '').trim());
+          setOrDelete(conf, 'namespace', (item.namespace || '').trim());
+          setOrDelete(conf, 'app', (item.app || '').trim());
+          setOrDelete(conf, 'podSelector', (item.podSelector || '').trim());
+          const weightRaw = String(item.weight ?? '').trim();
+          if (weightRaw === '') delete conf.weight;
+          else {
+            const weightNum = Number(weightRaw);
+            conf.weight = Number.isFinite(weightNum) ? weightNum : weightRaw;
+          }
           entry[item.name] = conf;
           return entry;
         });
@@ -1268,14 +1292,14 @@ const cmsApp = createApp({
 
     function addBookmarkItem(group) {
       editingBookmarkItemId.value = null;
-      Object.assign(editingBookmarkItem, { name: '', href: '', abbr: '' });
+      Object.assign(editingBookmarkItem, { name: '', href: '', abbr: '', description: '', icon: '' });
       bookmarkItemGroupId = group.id;
       showBookmarkItemModal.value = true;
     }
 
     function editBookmarkItem(group, item) {
       editingBookmarkItemId.value = item.id;
-      Object.assign(editingBookmarkItem, { name: item.name, href: item.href, abbr: item.abbr });
+      Object.assign(editingBookmarkItem, { name: item.name, href: item.href, abbr: item.abbr, description: item.description || '', icon: item.icon || '' });
       bookmarkItemGroupId = group.id;
       showBookmarkItemModal.value = true;
     }
@@ -1288,15 +1312,19 @@ const cmsApp = createApp({
       const group = bookmarkGroups.value.find(g => g.id === bookmarkItemGroupId);
       if (!group) { showToast(t('item.groupNotFound'), 'error'); return; }
       const abbr = editingBookmarkItem.abbr.trim().toUpperCase() || name.slice(0, 2).toUpperCase();
+      const description = (editingBookmarkItem.description || '').trim();
+      const icon = (editingBookmarkItem.icon || '').trim();
       if (editingBookmarkItemId.value) {
         const item = group.items.find(i => i.id === editingBookmarkItemId.value);
         if (item) {
           item.name = name;
           item.href = href;
           item.abbr = abbr;
+          item.description = description;
+          item.icon = icon;
         }
       } else {
-        group.items.push({ id: uid(), name, href, abbr, source: {} });
+        group.items.push({ id: uid(), name, href, abbr, description, icon, source: {} });
       }
       showBookmarkItemModal.value = false;
     }
@@ -1312,6 +1340,8 @@ const cmsApp = createApp({
           const props = { ...(item.source || {}) };
           setOrDelete(props, 'abbr', item.abbr);
           setOrDelete(props, 'href', item.href);
+          setOrDelete(props, 'description', (item.description || '').trim());
+          setOrDelete(props, 'icon', (item.icon || '').trim());
           const entry = {};
           entry[item.name] = [props];
           return entry;
@@ -1517,7 +1547,8 @@ const cmsApp = createApp({
       editingItemId.value = null;
       Object.assign(editingItem, {
         name: '', href: '', description: '', target: '',
-        icon: '', iconType: 'mdi', widgetType: 'none', widgetValue: ''
+        icon: '', iconType: 'mdi', widgetType: 'none', widgetValue: '',
+        server: '', weight: '', namespace: '', app: '', podSelector: ''
       });
       editingItem._targetGroupId = group.id;
       showItemModal.value = true;
@@ -1528,9 +1559,13 @@ const cmsApp = createApp({
       Object.assign(editingItem, {
         name: item.name, href: item.href, description: item.description,
         target: item.target, icon: item.icon, iconType: item.iconType,
-        widgetType: item.widgetType, widgetValue: item.widgetValue
+        widgetType: item.widgetType, widgetValue: item.widgetValue,
+        server: item.server || '', weight: item.weight || '',
+        namespace: item.namespace || '', app: item.app || '', podSelector: item.podSelector || ''
       });
+      editingItem._widgetsExtra = Array.isArray(item.widgetsExtra) ? item.widgetsExtra : null;
       editingItem._targetGroupId = group.id;
+      editingItem._widgetsExtra = null;
       showItemModal.value = true;
     }
 
@@ -1545,7 +1580,10 @@ const cmsApp = createApp({
             name: editingItem.name.trim(), href: editingItem.href.trim(),
             description: editingItem.description.trim(), target: editingItem.target,
             icon: editingItem.icon.trim(), iconType: editingItem.iconType,
-            widgetType: editingItem.widgetType, widgetValue: editingItem.widgetValue.trim()
+            widgetType: editingItem.widgetType, widgetValue: editingItem.widgetValue.trim(),
+            server: editingItem.server.trim(), weight: editingItem.weight.trim(),
+            namespace: editingItem.namespace.trim(), app: editingItem.app.trim(),
+            podSelector: editingItem.podSelector.trim()
           });
         }
       } else {
@@ -1554,6 +1592,10 @@ const cmsApp = createApp({
           description: editingItem.description.trim(), target: editingItem.target,
           icon: editingItem.icon.trim(), iconType: editingItem.iconType,
           widgetType: editingItem.widgetType, widgetValue: editingItem.widgetValue.trim(),
+          server: editingItem.server.trim(), weight: editingItem.weight.trim(),
+          namespace: editingItem.namespace.trim(), app: editingItem.app.trim(),
+          podSelector: editingItem.podSelector.trim(),
+          widgetsExtra: null,
           widgetDialect: 'none', nested: false, source: null
         });
       }

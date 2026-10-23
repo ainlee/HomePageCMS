@@ -169,11 +169,12 @@
                   <div class="item-row">
                     <i class="mdi mdi-drag item-drag" @mousedown="startCardDrag($event, group, item)"></i>
                     <div class="item-icon-wrap">
-                      <span class="bookmark-abbr">{{ item.abbr }}</span>
+                      <i v-if="item.icon" class="mdi item-icon" :class="item.icon"></i>
+                      <span v-else class="bookmark-abbr">{{ item.abbr }}</span>
                     </div>
                     <div class="item-info">
                       <span class="item-name">{{ item.name }}</span>
-                      <span class="item-desc">{{ item.href }}</span>
+                      <span class="item-desc">{{ item.description || item.href }}</span>
                     </div>
                     <div class="item-actions">
                       <button @click="editBookmarkItem(group, item)" class="btn btn-icon" :title="t('bookmark.edit')">
@@ -486,6 +487,29 @@
             <label>{{ widgetValueLabel }}</label>
             <input v-model="editingItem.widgetValue" type="text" :placeholder="widgetValuePlaceholder">
           </div>
+          <div class="form-group">
+            <label>{{ t('item.server') }}</label>
+            <input v-model="editingItem.server" type="text" :placeholder="t('item.serverPlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.weight') }}</label>
+            <input v-model="editingItem.weight" type="text" inputmode="numeric" :placeholder="t('item.weightPlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.namespace') }}</label>
+            <input v-model="editingItem.namespace" type="text" :placeholder="t('item.namespacePlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.app') }}</label>
+            <input v-model="editingItem.app" type="text" :placeholder="t('item.appPlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.podSelector') }}</label>
+            <input v-model="editingItem.podSelector" type="text" :placeholder="t('item.podSelectorPlaceholder')">
+          </div>
+          <div v-if="editingItem._widgetsExtra" class="form-group form-note">
+            <span>{{ t('item.widgetsExtraHint') }}</span>
+          </div>
         </div>
         <div class="modal-actions">
           <button @click="showItemModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
@@ -528,6 +552,16 @@
           <label>{{ t('bookmark.abbr') }}</label>
           <input id="bookmark-abbr" v-model="editingBookmarkItem.abbr" type="text"
                  :placeholder="t('bookmark.abbrPlaceholder')" @keyup.enter="saveBookmarkItem">
+        </div>
+        <div class="form-group">
+          <label>{{ t('bookmark.description') }}</label>
+          <input id="bookmark-description" v-model="editingBookmarkItem.description" type="text"
+                 :placeholder="t('bookmark.descriptionPlaceholder')" @keyup.enter="saveBookmarkItem">
+        </div>
+        <div class="form-group">
+          <label>{{ t('bookmark.icon') }}</label>
+          <input id="bookmark-icon" v-model="editingBookmarkItem.icon" type="text"
+                 :placeholder="t('bookmark.iconPlaceholder')" @keyup.enter="saveBookmarkItem">
         </div>
         <div class="modal-actions">
           <button @click="showBookmarkItemModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
