@@ -187,6 +187,14 @@ body {
   transition: flex-basis 0.25s ease, width 0.25s ease, height 0.25s ease;
 }
 
+/* While dragging, the preview iframe would otherwise swallow mouse events and the
+   divider would stop following the cursor (and never receive the mouseup that
+   ends the drag). Letting events pass through keeps the drag alive in both
+   directions. */
+.main-content.resizing .preview-iframe {
+  pointer-events: none;
+}
+
 .editor-panel.full-width { flex: 1; }
 
 .editor-toolbar {
@@ -263,6 +271,52 @@ body {
 }
 
 .item-card:hover { border-color: var(--accent); }
+
+
+/* Drag insertion indicator: an elegant glowing bar shows the exact landing spot,
+   rendered above the target card so it sits between two cards. */
+.item-card.drop-target {
+  position: relative;
+}
+.item-card.drop-target::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 6px;
+  right: 6px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px 1px color-mix(in srgb, var(--accent) 70%, transparent),
+              0 0 4px 0 color-mix(in srgb, var(--accent) 90%, transparent);
+  animation: drop-indicator-pulse 1.1s ease-in-out infinite;
+  pointer-events: none;
+}
+.drag-ghost {
+  position: fixed;
+  z-index: 9999;
+  opacity: 0.85;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transform: rotate(-1.5deg);
+}
+.item-card.is-dragging {
+  opacity: 0.35;
+}
+.drop-indicator {
+  pointer-events: none;
+  height: 4px;
+  margin: 6px 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px 1px color-mix(in srgb, var(--accent) 70%, transparent),
+              0 0 4px 0 color-mix(in srgb, var(--accent) 90%, transparent);
+  animation: drop-indicator-pulse 1.1s ease-in-out infinite;
+}
+@keyframes drop-indicator-pulse {
+  0%, 100% { opacity: 0.85; transform: scaleY(1); }
+  50% { opacity: 1; transform: scaleY(1.35); }
+}
 
 .item-row {
   display: flex;

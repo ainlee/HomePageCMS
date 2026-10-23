@@ -14,6 +14,9 @@ const { parseIni } = require('./lib/ini');
 const pkg = require('./package.json');
 
 const app = express();
+// Runtime state such as the access-password policy must never be served from a cache,
+// so disable ETags entirely and rely on the explicit Cache-Control headers below.
+app.set('etag', false);
 const PROJECT_DIR = __dirname;
 
 // Defaults, all relative to the project directory, so a fresh clone works with no
@@ -473,6 +476,13 @@ function passwordMatches(candidate) {
 }
 
 app.use('/api', (req, res, next) => {
+  // The password policy and every other piece of runtime state are decided on the
+  // server and must not be cached by a browser or an intermediate proxy: a stale
+  // /api/auth answer is exactly how one device ends up thinking no password is
+  // needed while another device asks for one.
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   // The browser tells the server which language it is showing, so the messages that
   // come back are in the same language.
   const requested = (req.query && typeof req.query.locale === 'string' ? req.query.locale : '').trim()

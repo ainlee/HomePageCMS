@@ -4,21 +4,35 @@ const ramp = window.HomepageRamp;
 
 const cmsApp = createApp({
   setup() {
+    const loadLayout = () => {
+      try {
+        const raw = localStorage.getItem('hcms-layout');
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (err) {
+        return {};
+      }
+    };
+    const savedLayout = loadLayout();
+
     // State
     const groups = ref([]);
     const bookmarkGroups = ref([]);
     const activeTab = ref('services');
-    const showPreview = ref(true);
+    const showPreview = ref(savedLayout.showPreview !== false);
     // The preview target comes from the server (settings file > env var > unset), so no
     // deployment-specific URL is baked into the front end.
     const previewUrl = ref('');
     const previewUrlSource = ref('');
     const previewKey = ref(0);
-    const previewCollapsed = ref(false);
+    const previewCollapsed = ref(!!savedLayout.previewCollapsed);
     const isResizing = ref(false);
     // Share of .main-content given to the editor; the preview takes the rest.
     // 60/40 matches the original CSS default (preview panel was 40%).
-    const splitRatio = ref(60);
+    const splitRatio = ref(typeof savedLayout.splitRatio === 'number'
+      ? Math.max(20, Math.min(80, savedLayout.splitRatio))
+      : 60);
     const viewportWidth = ref(window.innerWidth);
     const saving = ref(false);
     const showGroupModal = ref(false);
@@ -35,6 +49,8 @@ const cmsApp = createApp({
     const movingItem = ref(null);
     const movingFromGroup = ref(null);
     const dragOverGroup = ref(null);
+    const dropIndex = ref(null);
+    const draggingItem = ref(null);
     const backups = ref([]);
     // Hash of the config files as they were when they were loaded. A save sends it
     // back so the server can refuse to overwrite a file that changed in the meantime.
@@ -865,7 +881,7 @@ const cmsApp = createApp({
       if (apiPassword.value) headers['X-CMS-Password'] = apiPassword.value;
       // The server replies in the language the editor is showing.
       headers['Accept-Language'] = i18n.locale;
-      const res = await fetch(url, Object.assign({}, options, { headers }));
+      const res = await fetch(url, Object.assign({}, options, { headers, cache: 'no-store' }));
       if (res.status === 401) {
         // The stored password is wrong or gone: forget it and ask again.
         apiPassword.value = '';
@@ -907,7 +923,7 @@ const cmsApp = createApp({
     // prompt would appear only after the user had already clicked around.
     async function initAuth() {
       try {
-        const res = await fetch('/api/auth');
+        const res = await fetch('/api/auth', { cache: 'no-store' });
         const json = await res.json();
         authState.required = !!(json.data && json.data.required);
       } catch (err) {
@@ -1543,44 +1559,264 @@ const cmsApp = createApp({
     }
 
     // Drag & Drop
+    function moveItemUp(group, item) {
+      const idx = group.items.indexOf(item);
+      if (idx > 0) {
+        const arr = group.items;
+        const tmp = arr[idx - 1];
+        arr[idx - 1] = arr[idx];
+        arr[idx] = tmp;
+      }
+    }
+    function moveItemDown(group, item) {
+      const idx = group.items.indexOf(item);
+      if (idx >= 0 && idx < group.items.length - 1) {
+        const arr = group.items;
+        const tmp = arr[idx + 1];
+        arr[idx + 1] = arr[idx];
+        arr[idx] = tmp;
+      }
+    }
+
+    let dragGhost = null;
+
+    function startCardDrag(event, group, item) {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragSource = { group, item };
+      draggingItem.value = item;
+      dropIndex.value = null;
+      dragOverGroup.value = group.id;
+
+      const card = event.currentTarget && event.currentTarget.closest
+        ? event.currentTarget.closest('.item-card')
+        : null;
+      if (card) {
+        dragGhost = card.cloneNode(true);
+        dragGhost.classList.add('drag-ghost');
+        dragGhost.style.width = card.offsetWidth + 'px';
+        dragGhost.style.pointerEvents = 'none';
+        document.body.appendChild(dragGhost);
+        moveGhost(event.clientX, event.clientY);
+      }
+
+      document.addEventListener('mousemove', onCardDragMove);
+      document.addEventListener('mouseup', endCardDrag);
+    }
+
+    function moveGhost(x, y) {
+      if (!dragGhost) return;
+      dragGhost.style.left = (x + 14) + 'px';
+      dragGhost.style.top = (y + 14) + 'px';
+    }
+
+    function onCardDragMove(event) {
+      moveGhost(event.clientX, event.clientY);
+      autoScrollDuringDrag(event);
+      updateDropIndexFromPoint(event.clientX, event.clientY);
+    }
+
+    function endCardDrag(event) {
+      document.removeEventListener('mousemove', onCardDragMove);
+      document.removeEventListener('mouseup', endCardDrag);
+      if (dragGhost) {
+        dragGhost.remove();
+        dragGhost = null;
+      }
+
+      if (!dragSource) {
+        draggingItem.value = null;
+        dropIndex.value = null;
+        dragOverGroup.value = null;
+        return;
+      }
+      const { group: srcGroup, item: srcItem } = dragSource;
+
+      // Determine target from release point.
+      let targetGroup = srcGroup;
+      let insertIndex = srcGroup.items.length;
+      const el = document.elementFromPoint(event.clientX, event.clientY);
+      const itemEl = el && el.closest ? el.closest('.item-card') : null;
+      const groupEl = el && el.closest ? el.closest('.group-card') : null;
+      if (itemEl) {
+        const gid = itemEl.getAttribute('data-group-id') || (itemEl.closest('.group-card') && itemEl.closest('.group-card').getAttribute('data-group-id'));
+        const iid = itemEl.getAttribute('data-item-id');
+        const g = groups.value.find((gg) => gg.id === gid);
+        if (g) {
+          targetGroup = g;
+          const targetItem = g.items.find((i) => i.id === iid);
+          const rect = itemEl.getBoundingClientRect();
+          const idx = targetItem ? g.items.indexOf(targetItem) : g.items.length;
+          insertIndex = event.clientY < rect.top + rect.height / 2 ? idx : idx + 1;
+        }
+      } else if (groupEl) {
+        const gid = groupEl.getAttribute('data-group-id');
+        const g = groups.value.find((gg) => gg.id === gid);
+        if (g) {
+          targetGroup = g;
+          insertIndex = g.items.length;
+        }
+      }
+
+      const srcIdx = srcGroup.items.indexOf(srcItem);
+      if (srcIdx > -1) srcGroup.items.splice(srcIdx, 1);
+      if (srcGroup === targetGroup && srcIdx >= 0 && srcIdx < insertIndex) insertIndex -= 1;
+      insertIndex = Math.max(0, Math.min(targetGroup.items.length, insertIndex));
+      targetGroup.items.splice(insertIndex, 0, srcItem);
+
+      dragSource = null;
+      draggingItem.value = null;
+      dropIndex.value = null;
+      dragOverGroup.value = null;
+    }
+
+    function autoScrollDuringDrag(event) {
+      const container = document.querySelector('.editor-panel');
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const threshold = 70;
+      const step = 14;
+      if (event.clientY < rect.top + threshold) {
+        container.scrollTop = Math.max(0, container.scrollTop - step);
+      } else if (event.clientY > rect.bottom - threshold) {
+        container.scrollTop = Math.min(container.scrollHeight - container.clientHeight, container.scrollTop + step);
+      }
+    }
+
+    function onDragStartScroll(event) { autoScrollDuringDrag(event); updateDropIndexFromPoint(event.clientX, event.clientY); }
+
     function onDragStart(event, group, item) {
       dragSource = { group, item };
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', item.id);
+      dropIndex.value = null;
+      window.addEventListener('dragover', onDragStartScroll);
     }
 
-    function onDragOver(event, group) {
+    function updateDropIndexFromPoint(x, y) {
+      const el = document.elementFromPoint(x, y);
+      const itemEl = el && el.closest ? el.closest('.item-card') : null;
+      const groupEl = el && el.closest ? el.closest('.group-card') : null;
+      if (itemEl) {
+        const gid = itemEl.getAttribute('data-group-id') || (itemEl.closest('.group-card') && itemEl.closest('.group-card').getAttribute('data-group-id'));
+        const iid = itemEl.getAttribute('data-item-id');
+        const group = groups.value.find((g) => g.id === gid);
+        if (!group) return;
+        const item = group.items.find((i) => i.id === iid);
+        if (!item) return;
+        const rect = itemEl.getBoundingClientRect();
+        const idx = group.items.indexOf(item);
+        const position = y < rect.top + rect.height / 2 ? idx : idx + 1;
+        dragOverGroup.value = group.id;
+        dropIndex.value = { groupId: group.id, index: position };
+      } else if (groupEl) {
+        const gid = groupEl.getAttribute('data-group-id');
+        const group = groups.value.find((g) => g.id === gid);
+        if (!group) return;
+        dragOverGroup.value = group.id;
+        // Resolve to the nearest item boundary instead of always appending:
+        // a tiny gap between two cards otherwise makes the indicator jump to
+        // the end of the group.
+        const cards = groupEl.querySelectorAll('.item-card');
+        let index = group.items.length;
+        for (let i = 0; i < cards.length; i++) {
+          const rect = cards[i].getBoundingClientRect();
+          if (y < rect.top + rect.height / 2) { index = i; break; }
+          if (y < rect.bottom) { index = i + 1; break; }
+        }
+        // If the cursor is below every card, append.
+        if (cards.length && y >= cards[cards.length - 1].getBoundingClientRect().bottom) {
+          index = group.items.length;
+        }
+        dropIndex.value = { groupId: group.id, index };
+      }
+    }
+
+    function onDragOver(event, group, item) {
+      event.stopPropagation();
       event.dataTransfer.dropEffect = 'move';
       dragOverGroup.value = group.id;
+      updateDropIndexFromPoint(event.clientX, event.clientY);
+      autoScrollDuringDrag(event);
     }
 
-    function onDrop(event, targetGroup) {
+    function onDragOverGroup(event, group) {
+      event.dataTransfer.dropEffect = 'move';
+      dragOverGroup.value = group.id;
+      updateDropIndexFromPoint(event.clientX, event.clientY);
+      if (!dropIndex.value || dropIndex.value.groupId !== group.id) {
+        dropIndex.value = { groupId: group.id, index: group.items.length };
+      }
+      autoScrollDuringDrag(event);
+    }
+
+    function onDrop(event, group, item) {
+      if (item) event.stopPropagation();
+      window.removeEventListener('dragover', onDragStartScroll);
       dragOverGroup.value = null;
       if (!dragSource) return;
-      const { group: srcGroup, item } = dragSource;
-      if (srcGroup === targetGroup) {
-        // Reorder within same group
-        const oldIdx = srcGroup.items.indexOf(item);
-        srcGroup.items.splice(oldIdx, 1);
-        srcGroup.items.push(item);
-      } else {
-        // Move to different group
-        const idx = srcGroup.items.indexOf(item);
-        if (idx > -1) srcGroup.items.splice(idx, 1);
-        targetGroup.items.push(item);
+      const { group: srcGroup, item: srcItem } = dragSource;
+
+      // Determine target from the actual release point.
+      let targetGroup = group;
+      let insertIndex = targetGroup.items.length;
+      const x = event.clientX;
+      const y = event.clientY;
+      const el = document.elementFromPoint(x, y);
+      const itemEl = el && el.closest ? el.closest('.item-card') : null;
+      const groupEl = el && el.closest ? el.closest('.group-card') : null;
+      if (itemEl) {
+        const gid = itemEl.getAttribute('data-group-id') || (itemEl.closest('.group-card') && itemEl.closest('.group-card').getAttribute('data-group-id'));
+        const iid = itemEl.getAttribute('data-item-id');
+        const g = groups.value.find((gg) => gg.id === gid);
+        if (g) {
+          targetGroup = g;
+          const targetItem = g.items.find((i) => i.id === iid);
+          const rect = itemEl.getBoundingClientRect();
+          const idx = targetItem ? g.items.indexOf(targetItem) : g.items.length;
+          insertIndex = y < rect.top + rect.height / 2 ? idx : idx + 1;
+        }
+      } else if (groupEl) {
+        const gid = groupEl.getAttribute('data-group-id');
+        const g = groups.value.find((gg) => gg.id === gid);
+        if (g) {
+          targetGroup = g;
+          insertIndex = g.items.length;
+        }
       }
+
+      const srcIdx = srcGroup.items.indexOf(srcItem);
+      if (srcIdx > -1) srcGroup.items.splice(srcIdx, 1);
+      if (srcGroup === targetGroup && srcIdx >= 0 && srcIdx < insertIndex) insertIndex -= 1;
+      insertIndex = Math.max(0, Math.min(targetGroup.items.length, insertIndex));
+      targetGroup.items.splice(insertIndex, 0, srcItem);
+
+      dropIndex.value = null;
       dragSource = null;
     }
 
     function onDragEnd() {
+      window.removeEventListener('dragover', onDragStartScroll);
       dragOverGroup.value = null;
+      dropIndex.value = null;
       dragSource = null;
     }
 
     // Preview
-    function togglePreview() { showPreview.value = !showPreview.value; }
+    function saveLayout() {
+      try {
+        localStorage.setItem('hcms-layout', JSON.stringify({
+          showPreview: showPreview.value,
+          previewCollapsed: previewCollapsed.value,
+          splitRatio: splitRatio.value
+        }));
+      } catch (err) {
+      }
+    }
+    function togglePreview() { showPreview.value = !showPreview.value; saveLayout(); }
     function refreshPreview() { previewKey.value++; }
-    function togglePreviewCollapsed() { previewCollapsed.value = !previewCollapsed.value; }
+    function togglePreviewCollapsed() { previewCollapsed.value = !previewCollapsed.value; saveLayout(); }
 
     // Runtime settings
     async function loadSettings() {
@@ -1679,14 +1915,19 @@ const cmsApp = createApp({
 
     // Resize logic
     function startResize(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      if (e && e.stopPropagation) e.stopPropagation();
       isResizing.value = true;
       // Dragging the divider is a request to see both panes, so restore the preview first.
       if (previewCollapsed.value) previewCollapsed.value = false;
       document.body.style.userSelect = 'none';
       document.addEventListener('mousemove', onResize);
       document.addEventListener('mouseup', stopResize);
-      document.addEventListener('touchmove', onResize);
+      document.addEventListener('mouseleave', stopResize);
+      window.addEventListener('blur', stopResize);
+      document.addEventListener('touchmove', onResize, { passive: false });
       document.addEventListener('touchend', stopResize);
+      document.addEventListener('touchcancel', stopResize);
     }
 
     function onResize(e) {
@@ -1707,11 +1948,15 @@ const cmsApp = createApp({
 
     function stopResize() {
       isResizing.value = false;
+      saveLayout();
       document.body.style.userSelect = '';
       document.removeEventListener('mousemove', onResize);
       document.removeEventListener('mouseup', stopResize);
+      document.removeEventListener('mouseleave', stopResize);
+      window.removeEventListener('blur', stopResize);
       document.removeEventListener('touchmove', onResize);
       document.removeEventListener('touchend', stopResize);
+      document.removeEventListener('touchcancel', stopResize);
     }
 
 
@@ -1765,6 +2010,8 @@ const cmsApp = createApp({
       });
       window.addEventListener('resize', syncViewport);
       window.addEventListener('orientationchange', syncViewport);
+      window.addEventListener('pagehide', saveLayout);
+      window.addEventListener('beforeunload', saveLayout);
       document.addEventListener('mousedown', onDocumentPointerDown);
       // Mobile URL-bar show/hide does not always fire window resize, and can also arrive
       // as a visual-viewport scroll, so listen for both.
@@ -1800,12 +2047,12 @@ const cmsApp = createApp({
       customCssPalette, customCssText, customCssRampRows, customCssSeed, customCssParts,
       setCustomCssSeed, restoreCustomCssTheme, resetCustomCssTheme,
       resetAllCustomCss, confirmResetAllCustomCss, probeFontUrl,
-      movingItem, movingFromGroup, dragOverGroup, backups, toast,
+      movingItem, movingFromGroup, dragOverGroup, dropIndex, draggingItem, backups, toast,
       totalItems, widgetValueLabel, widgetValuePlaceholder,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,
       addItem, editItem, saveItem, deleteItem,
       moveItemToGroup, confirmMove,
-      onDragStart, onDragOver, onDrop, onDragEnd,
+      onDragStart, onDragOver, onDragOverGroup, onDrop, onDragEnd, startCardDrag, moveItemUp, moveItemDown,
       togglePreview, togglePreviewCollapsed, refreshPreview, loadBackups, restoreBackup,
       loadSettings, openSettings, saveSettings, skipSetup, submitPassword,
       initAuth, dismissPasswordPrompt,

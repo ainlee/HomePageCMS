@@ -85,7 +85,9 @@
         <div v-else class="groups-list">
           <template v-if="activeTab === 'services'">
 <div class="groups-list">
-          <div v-for="(group, gi) in groups" :key="group.id" class="group-card" :class="{ 'drag-over': dragOverGroup === group.id }">
+          <div v-for="(group, gi) in groups" :key="group.id" class="group-card"
+               :data-group-id="group.id"
+               :class="{ 'drag-over': dragOverGroup === group.id }">
             <div class="group-header">
               <i class="mdi drag-handle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleGroup(group)"></i>
               <span class="group-name" @click="toggleGroup(group)">{{ group.name }}</span>
@@ -103,13 +105,11 @@
 
             <div v-show="!group.collapsed" class="group-items">
               <div v-for="(item, ii) in group.items" :key="item.id" class="item-card"
-                   draggable="true"
-                   @dragstart="onDragStart($event, group, item)"
-                   @dragend="onDragEnd"
-                   @dragover.prevent="onDragOver($event, group)"
-                   @drop.prevent="onDrop($event, group)">
+                   :data-item-id="item.id"
+                   :class="{ 'drop-target': dropIndex && dropIndex.groupId === group.id && dropIndex.index === ii,
+                             'is-dragging': draggingItem === item }">
                 <div class="item-row">
-                  <i class="mdi mdi-drag item-drag"></i>
+                  <i class="mdi mdi-drag item-drag" @mousedown="startCardDrag($event, group, item)"></i>
                   <div class="item-icon-wrap">
                     <i v-if="item.iconType === 'mdi' && item.icon" class="mdi item-icon" :class="item.icon"></i>
                     <img v-else-if="item.icon" :src="item.icon" class="item-icon-img" @error="item.icon = ''">
@@ -124,6 +124,12 @@
                     <button @click="editItem(group, item)" class="btn btn-icon" :title="t('item.edit')">
                       <i class="mdi mdi-pencil"></i>
                     </button>
+                    <button @click="moveItemUp(group, item)" class="btn btn-icon" :title="t('item.moveUp')" :disabled="ii === 0">
+                      <i class="mdi mdi-arrow-up"></i>
+                    </button>
+                    <button @click="moveItemDown(group, item)" class="btn btn-icon" :title="t('item.moveDown')" :disabled="ii === group.items.length - 1">
+                      <i class="mdi mdi-arrow-down"></i>
+                    </button>
                     <button @click="moveItemToGroup(group, item)" class="btn btn-icon" :title="t('item.move')">
                       <i class="mdi mdi-arrow-right-bold-circle"></i>
                     </button>
@@ -133,6 +139,7 @@
                   </div>
                 </div>
               </div>
+              <div v-if="dropIndex && dropIndex.groupId === group.id && dropIndex.index === group.items.length" class="drop-indicator"></div>
               <button @click="addItem(group)" class="btn btn-small btn-secondary add-item-btn">
                 <i class="mdi mdi-plus"></i> {{ t('item.add') }}
               </button>
@@ -157,9 +164,10 @@
                 </div>
               </div>
               <div v-show="!group.collapsed" class="group-items">
-                <div v-for="(item, ii) in group.items" :key="item.id" class="item-card">
+                <div v-for="(item, ii) in group.items" :key="item.id" class="item-card"
+                   :data-item-id="item.id">
                   <div class="item-row">
-                    <i class="mdi mdi-drag item-drag"></i>
+                    <i class="mdi mdi-drag item-drag" @mousedown="startCardDrag($event, group, item)"></i>
                     <div class="item-icon-wrap">
                       <span class="bookmark-abbr">{{ item.abbr }}</span>
                     </div>
