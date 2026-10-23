@@ -49,6 +49,7 @@ const cmsApp = createApp({
     const movingItem = ref(null);
     const movingFromGroup = ref(null);
     const dragOverGroup = ref(null);
+    let overlayPress = null;
     const dropIndex = ref(null);
     const draggingItem = ref(null);
     const backups = ref([]);
@@ -232,6 +233,28 @@ const cmsApp = createApp({
     }
 
     // Clicking anywhere outside the menu closes it again.
+    function onOverlayMouseDown(event) {
+      const t = event.target;
+      if (t && t.classList && t.classList.contains('modal-overlay')) {
+        overlayPress = { target: t, x: event.clientX, y: event.clientY, moved: false };
+      } else {
+        overlayPress = null;
+      }
+    }
+    function onOverlayMouseMove(event) {
+      if (overlayPress && !overlayPress.moved) {
+        const dx = event.clientX - overlayPress.x;
+        const dy = event.clientY - overlayPress.y;
+        if (dx * dx + dy * dy > 25) overlayPress.moved = true;
+      }
+    }
+    function closeOnOverlayClick(event, closeFn) {
+      if (overlayPress && !overlayPress.moved && overlayPress.target === event.target) {
+        closeFn();
+      }
+      overlayPress = null;
+    }
+
     function onDocumentPointerDown(event) {
       if (!langMenuOpen.value) return;
       const menu = document.querySelector('.lang-menu');
@@ -2013,6 +2036,8 @@ const cmsApp = createApp({
       window.addEventListener('pagehide', saveLayout);
       window.addEventListener('beforeunload', saveLayout);
       document.addEventListener('mousedown', onDocumentPointerDown);
+      document.addEventListener('mousedown', onOverlayMouseDown);
+      document.addEventListener('mousemove', onOverlayMouseMove);
       // Mobile URL-bar show/hide does not always fire window resize, and can also arrive
       // as a visual-viewport scroll, so listen for both.
       if (window.visualViewport) {
@@ -2025,6 +2050,8 @@ const cmsApp = createApp({
       window.removeEventListener('resize', syncViewport);
       window.removeEventListener('orientationchange', syncViewport);
       document.removeEventListener('mousedown', onDocumentPointerDown);
+      document.removeEventListener('mousedown', onOverlayMouseDown);
+      document.removeEventListener('mousemove', onOverlayMouseMove);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', syncViewport);
         window.visualViewport.removeEventListener('scroll', syncViewport);
@@ -2055,7 +2082,7 @@ const cmsApp = createApp({
       onDragStart, onDragOver, onDragOverGroup, onDrop, onDragEnd, startCardDrag, moveItemUp, moveItemDown,
       togglePreview, togglePreviewCollapsed, refreshPreview, loadBackups, restoreBackup,
       loadSettings, openSettings, saveSettings, skipSetup, submitPassword,
-      initAuth, dismissPasswordPrompt,
+      initAuth, dismissPasswordPrompt, closeOnOverlayClick,
       previewCollapsed, isColumn, isResizing, splitRatio, startResize, onResize, stopResize,
       editorPanelStyle, previewPanelStyle,
       widgetTypeLabel,
