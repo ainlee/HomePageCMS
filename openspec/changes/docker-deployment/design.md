@@ -64,9 +64,15 @@
   若 88X 的 umask/屬主不同，映像端以 user 指令對齊。
 
 ## 7. 風險與未決
-
-- Homepage 對設定目錄未知子目錄 cms/ 的行為未實測（tasks 4.1）；
-  若它列進儀表板或掃描，需調整 cms/ 名稱或位置。
+- Homepage 對設定目錄未知子目錄 cms/ 的行為已實測（88X，tasks 4.1）：
+  正在執行的 Homepage 容器設定目錄多出 cms/ 子目錄後，dashboard 與
+  /api/config/* 行為不變、log 無未知子目錄錯誤，/api/revalidate（GET）正常。
+  若換一台 Homepage 出現掃描設定目錄的行為，再調整 cms/ 名稱或位置。
 - 915150576 側的 tunnel 結構未驗證，本 change 只定義通用接線，
   另一側套用時補對應資訊。
 - registry 推送、多子路徑留待後續 change。
+- 實測發現（88X）：revalidate 走服務名 HOMEPAGE_CMS_REVALIDATE_URL=
+  http://homepage:3000 時，Homepage 的 allowed-hosts 驗證（HOMEPAGE_ALLOWED_HOSTS
+  未含 homepage）擋掉 Host header 為 homepage 的請求、回 400。上線須把服務名
+  加進 HOMEPAGE_ALLOWED_HOSTS 並 recreate Homepage 容器，或改走公開預覽網址重讀
+  （經 tunnel 回來，多一跳但不必動 Homepage）。
