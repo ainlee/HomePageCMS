@@ -192,7 +192,7 @@ Homepage 官方提供的客製樣式檔。有一個坑要注意：**儀表板若
 編輯器有兩種跑法，而且**可以同時跑**：
 
 - **本地版**：跑在你自己的電腦上，透過網路讀寫 Homepage 的設定檔。沒有裝 Docker 就用這個。
-- **Docker 版**：把編輯器放進容器、跟 Homepage 並排，共用同一個設定資料夾。Homepage 本來就用 Docker 跑的話，用這個最省事。
+- **Docker 版**：把編輯器放進容器，用**自己一份 compose 檔**跟 Homepage 並排，共用同一個設定資料夾。兩邊各自的程式各自升級、互不碰對方的檔。Homepage 本來就用 Docker 跑的話，用這個最省事。
 
 兩種跑法改的是同一批 YAML 檔案，不需要搬資料。記一個原則就好：**看，兩邊都可以；存檔，一次只用一邊。** 如果兩邊真的同時存了同一份檔，後存的那邊會請你重新整理一次再存，不會蓋掉對方的東西。
 
@@ -202,7 +202,7 @@ Homepage 官方提供的客製樣式檔。有一個坑要注意：**儀表板若
 
 ### Docker 版
 
-1. 把 [compose.example.yml](compose.example.yml) 裡的 `homepage-cms` 服務，複製到你 Homepage 同一份 compose 檔（或同一目錄下另一份）。
+1. 把 [compose.example.yml](compose.example.yml) 放進你自己的資料夾（**獨立 stack**，建議做法：Homepage 升級跟我們升級各碰各的檔，Dockge 各一卡片）。不介意的話也可以把同一段服務抄進 Homepage 的 compose 檔裡（同 stack），檔案裡有寫到差別在哪。
 2. 填上你自己機器的值：埠號、設定資料夾路徑、對外網域。並在建資料夾裡建一個 `cms/` 子資料夾，放編輯器的設定檔與備份。
 3. 啟動：
 
@@ -225,7 +225,7 @@ Homepage 官方提供的客製樣式檔。有一個坑要注意：**儀表板若
 
 ### 進階：可以調的東西
 
-都藏在 compose 的環境變數裡：`HOMEPAGE_CMS_BASE_PATH`（編輯器掛在哪個子路徑，例如 `/cms`）、`HOMEPAGE_CMS_REVALIDATE_URL`（存檔後通知 Homepage 重讀的地址，同 stack 內填 `http://homepage:3000` 最穩）、`HOST`（容器內固定 `0.0.0.0`）。
+都藏在 compose 的環境變數裡：`HOMEPAGE_CMS_BASE_PATH`（編輯器掛在哪個子路徑，例如 `/cms`）、`HOMEPAGE_CMS_REVALIDATE_URL`（存檔後通知 Homepage 重讀的地址：**獨立 stack** 填公開的儀表板網址，**同 stack** 填 `http://homepage:3000` 最穩）、`HOST`（容器內固定 `0.0.0.0`）。
 
 ### 存取保護
 

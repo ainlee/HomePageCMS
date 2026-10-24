@@ -1,35 +1,30 @@
-# Example compose file: add the editor next to an existing Homepage service.
+# HomePageCMS (the editor) as a STANDALONE stack.
 #
-# Copy this into your Homepage stack's compose file (or keep it as a second
-# file in the same directory) and fill in the values for YOUR machine; nothing
-# here is a default you can leave as-is. The homepage service is shown only for
-# context - keep whatever you already have, unchanged.
+# Keep the editor in its OWN compose file, separate from your Homepage's compose,
+# so the two can be upgraded independently: Homepage updates never touch this file,
+# and editor updates never touch Homepage's. They share only the config directory.
 #
-# Before you start: make sure the host directory you mount at /app/config has a
-# cms/ subdirectory for the editor's own data, e.g. /path/to/homepage/cms/.
+# Put this file in its own folder (or alongside your Homepage's) and fill in the
+# values for YOUR machine - nothing here is a default you can leave as-is.
+#
+# Before you start: make sure the Homepage config directory you mount at /app/config
+# has a cms/ subdirectory for the editor's own data, e.g. /path/to/homepage/cms/.
 services:
-  # ---- your existing Homepage service, unchanged -----------------------------
-  homepage:
-    image: gethomepage/homepage:latest
-    ports:
-      - '3800:3000' # your current mapping
-    volumes:
-      - HOMEPAGE_CONFIG_DIR:/app/config # your real config directory
-    restart: unless-stopped
-
-  # ---- the editor: a separate container on the same stack --------------------
   homepage-cms:
-    # Local build; tag it with the git short SHA so two running instances are
-    # tellable apart. Build with: docker build -t homepage-cms:$(git rev-parse --short HEAD) .
+    # Local build; tag it with the git short SHA so running instances are tellable
+    # apart. Build with: docker build -t homepage-cms:$(git rev-parse --short HEAD) .
     # (or :latest for quick iteration). No registry push in this version.
     build: {context: .}
     image: homepage-cms:latest
-    # The host port must not collide with your standalone editor (3899 in the
-    # single-machine layout): pick a free one and keep it for the container.
+    container_name: homepage-cms
+    restart: unless-stopped
+    # Pick a free host port that does not collide with a standalone editor running
+    # on the machine (3899 in the single-machine layout). LAN-only; the public
+    # URL goes through your tunnel.
     ports:
-      - '127.0.0.1:3457:3456' # LAN-only; the public URL goes through the tunnel
+      - '192.168.x.x:3457:3456'
     environment:
-      # Container convention: listen on all interfaces, the tunnel/reverse proxy
+      # Container convention: listen on all interfaces; the tunnel / reverse proxy
       # in front decides who can reach it.
       HOST: '0.0.0.0'
       PORT: '3456'
@@ -40,10 +35,12 @@ services:
       # The editor is reached at <domain>/cms/, so it serves itself under that
       # prefix. Empty means run at the domain root instead.
       HOMEPAGE_CMS_BASE_PATH: /cms
-      # After a save the editor asks Homepage to re-read its settings. Inside
-      # the shared network the service name reaches it directly, no round trip
-      # through the public URL. When unset the preview URL below is used.
-      HOMEPAGE_CMS_REVALIDATE_URL: 'http://homepage:3000'
+      # After a save the editor asks Homepage to re-read its settings. Because this
+      # is a separate stack, it has no shared docker network with Homepage, so it
+      # reaches the dashboard through the PUBLIC dashboard URL. (Only when the
+      # editor and Homepage share one stack would you use the in-network service
+      # name 'http://homepage:3000' instead - see the note below.)
+      HOMEPAGE_CMS_REVALIDATE_URL: 'https://YOUR-DASHBOARD-EXAMPLE.COM'
       # The public URL of the Homepage dashboard, for the preview panel.
       HOMEPAGE_PREVIEW_URL: 'https://YOUR-DASHBOARD-EXAMPLE.COM'
       # Access protection: do not put a password in this file. Enable it in the
@@ -56,8 +53,13 @@ services:
       # The cms/ subdirectory of that same path: the editor's own settings file
       # and its backups.
       - HOMEPAGE_CONFIG_DIR/cms:/app/cms
-    restart: unless-stopped
+
+# Variant - put the editor in the SAME compose file as Homepage (one stack):
+# the ONLY change is HOMEPAGE_CMS_REVALIDATE_URL, which then points at the
+# in-network service name 'http://homepage:3000' instead of the public URL, and
+# you put the two services in one file. Everything else is identical. Go with the
+# standalone file above when you want the two to upgrade independently.
 
 # Tunnel: point the /cms/* path rule of YOUR-DASHBOARD-EXAMPLE.COM at the editor's
-# internal port and keep the path (do not strip it); the editor recognises its
-# own prefix. The root path of the domain keeps pointing at the Homepage service.
+# internal port and keep the path (do not strip it); the editor recognises its own
+# prefix. The root path of the domain keeps pointing at the Homepage service.
