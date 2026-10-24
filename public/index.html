@@ -67,7 +67,7 @@
             <i class="mdi mdi-plus"></i> {{ t('tabs.addBookmarkGroup') }}
           </button>
           <span class="stats" v-if="activeTab === 'services'">{{ t('tabs.statsServices', { count: groups.length, total: totalItems }) }}</span>
-          <span class="stats" v-if="activeTab === 'bookmarks'">{{ t('tabs.statsBookmarks', { count: bookmarkGroups.length }) }}</span>
+          <span class="stats" v-if="activeTab === 'bookmarks'">{{ t('tabs.statsBookmarks', { count: bookmarkGroups.length, total: activeTotalItems }) }}</span>
           <span class="stats" v-if="activeTab === 'appearance'">
             <template v-if="appearanceDirty || customCssDirty">{{ t('appearance.unsaved') }}</template>
             <template v-else-if="appearanceReady">{{ t('appearance.savedState') }}</template>
@@ -149,10 +149,12 @@
 </template>
 
           <template v-if="activeTab === 'bookmarks'">
-            <div v-for="(group, gi) in bookmarkGroups" :key="group.id" class="group-card">
+            <div v-for="(group, gi) in bookmarkGroups" :key="group.id" class="group-card"
+                 :data-group-id="group.id"
+                 :class="{ 'drag-over': dragOverGroup === group.id }">
               <div class="group-header">
-                <i class="mdi drag-handle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleBookmarkGroup(group)"></i>
-                <span class="group-name" @click="toggleBookmarkGroup(group)">{{ group.name }}</span>
+                <i class="mdi drag-handle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleGroup(group)"></i>
+                <span class="group-name" @click="toggleGroup(group)">{{ group.name }}</span>
                 <span class="group-badge">{{ group.items.length }}</span>
                 <div class="group-actions">
                   <button @click.stop="editBookmarkGroup(group)" class="btn btn-icon" :title="t('group.edit')">
@@ -165,7 +167,9 @@
               </div>
               <div v-show="!group.collapsed" class="group-items">
                 <div v-for="(item, ii) in group.items" :key="item.id" class="item-card"
-                   :data-item-id="item.id">
+                   :data-item-id="item.id"
+                   :class="{ 'drop-target': dropIndex && dropIndex.groupId === group.id && dropIndex.index === ii,
+                             'is-dragging': draggingItem === item }">
                   <div class="item-row">
                     <i class="mdi mdi-drag item-drag" @mousedown="startCardDrag($event, group, item)"></i>
                     <div class="item-icon-wrap">
@@ -180,12 +184,22 @@
                       <button @click="editBookmarkItem(group, item)" class="btn btn-icon" :title="t('bookmark.edit')">
                         <i class="mdi mdi-pencil"></i>
                       </button>
+                      <button @click="moveItemUp(group, item)" class="btn btn-icon" :title="t('item.moveUp')" :disabled="ii === 0">
+                        <i class="mdi mdi-arrow-up"></i>
+                      </button>
+                      <button @click="moveItemDown(group, item)" class="btn btn-icon" :title="t('item.moveDown')" :disabled="ii === group.items.length - 1">
+                        <i class="mdi mdi-arrow-down"></i>
+                      </button>
+                      <button @click="moveItemToGroup(group, item)" class="btn btn-icon" :title="t('item.move')">
+                        <i class="mdi mdi-arrow-right-bold-circle"></i>
+                      </button>
                       <button @click="deleteBookmarkItem(group, ii)" class="btn btn-icon btn-danger" :title="t('bookmark.delete')">
                         <i class="mdi mdi-delete"></i>
                       </button>
                     </div>
                   </div>
                 </div>
+                <div v-if="dropIndex && dropIndex.groupId === group.id && dropIndex.index === group.items.length" class="drop-indicator"></div>
                 <button @click="addBookmarkItem(group)" class="btn btn-small btn-secondary add-item-btn">
                   <i class="mdi mdi-plus"></i> {{ t('bookmark.add') }}
                 </button>
@@ -575,7 +589,7 @@
       <div class="modal">
         <h2><i class="mdi mdi-folder-move"></i> {{ t('move.title', { name: movingItem?.name }) }}</h2>
         <div class="move-targets">
-          <button v-for="g in groups" :key="g.id" @click="confirmMove(g)" class="btn btn-move">
+          <button v-for="g in activeGroups" :key="g.id" @click="confirmMove(g)" class="btn btn-move">
             <i class="mdi mdi-folder"></i> {{ g.name }}
           </button>
         </div>

@@ -1,4 +1,4 @@
-const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
+const { createApp, ref, reactive, computed, onMounted, onUnmounted, watch } = Vue;
 // The colour ramp maths, shared with the server (lib/ramp.js).
 const ramp = window.HomepageRamp;
 // The path the editor is mounted under (e.g. /cms); empty when it runs at the
@@ -689,6 +689,17 @@ const cmsApp = createApp({
 
     // Computed
     const totalItems = computed(() => groups.value.reduce((sum, g) => sum + g.items.length, 0));
+    // Both tabs reuse the same reorder, drag and group-move code, so the group
+    // list those functions operate on follows the tab that is on screen.
+    const activeGroups = computed(() => activeTab.value === 'bookmarks' ? bookmarkGroups.value : groups.value);
+    const activeTotalItems = computed(() => activeGroups.value.reduce((sum, g) => sum + g.items.length, 0));
+    // A tab switch would otherwise leave the drag indicator pointing at a group
+    // that is no longer on screen, so it clears with the tab.
+    watch(activeTab, () => {
+      dropIndex.value = null;
+      dragOverGroup.value = null;
+      draggingItem.value = null;
+    });
     const isColumn = computed(() => viewportWidth.value > 768);
     const hasPreviewUrl = computed(() => !!previewUrl.value);
     // An empty src would make the iframe load the editor itself, so fall back to a blank
@@ -1259,8 +1270,6 @@ const cmsApp = createApp({
     function toggleGroup(group) { group.collapsed = !group.collapsed; }
 
     // Bookmark CRUD
-    function toggleBookmarkGroup(group) { group.collapsed = !group.collapsed; }
-
     function addBookmarkGroup() {
       editingBookmarkGroupId.value = null;
       editingBookmarkGroup.name = '';
@@ -1289,7 +1298,7 @@ const cmsApp = createApp({
 
     function deleteBookmarkGroup(gi) {
       const g = bookmarkGroups.value[gi];
-      if (!confirm(t('bookmark.confirmDeleteGroup', { name: g.name }))) return;
+      if (!confirm(t('bookmark.confirmDeleteGroup', { name: g.name, count: g.items.length }))) return;
       bookmarkGroups.value.splice(gi, 1);
     }
 
@@ -1701,7 +1710,9 @@ const cmsApp = createApp({
       }
       const { group: srcGroup, item: srcItem } = dragSource;
 
-      // Determine target from release point.
+      // Determine the target from the release point. Only the groups of the tab
+      // that is on screen are legal drop targets, so both branches look up the
+      // active group list instead of the services list.
       let targetGroup = srcGroup;
       let insertIndex = srcGroup.items.length;
       const el = document.elementFromPoint(event.clientX, event.clientY);
@@ -1710,7 +1721,7 @@ const cmsApp = createApp({
       if (itemEl) {
         const gid = itemEl.getAttribute('data-group-id') || (itemEl.closest('.group-card') && itemEl.closest('.group-card').getAttribute('data-group-id'));
         const iid = itemEl.getAttribute('data-item-id');
-        const g = groups.value.find((gg) => gg.id === gid);
+        const g = activeGroups.value.find((gg) => gg.id === gid);
         if (g) {
           targetGroup = g;
           const targetItem = g.items.find((i) => i.id === iid);
@@ -1720,7 +1731,7 @@ const cmsApp = createApp({
         }
       } else if (groupEl) {
         const gid = groupEl.getAttribute('data-group-id');
-        const g = groups.value.find((gg) => gg.id === gid);
+        const g = activeGroups.value.find((gg) => gg.id === gid);
         if (g) {
           targetGroup = g;
           insertIndex = g.items.length;
@@ -1752,16 +1763,6 @@ const cmsApp = createApp({
       }
     }
 
-    function onDragStartScroll(event) { autoScrollDuringDrag(event); updateDropIndexFromPoint(event.clientX, event.clientY); }
-
-    function onDragStart(event, group, item) {
-      dragSource = { group, item };
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', item.id);
-      dropIndex.value = null;
-      window.addEventListener('dragover', onDragStartScroll);
-    }
-
     function updateDropIndexFromPoint(x, y) {
       const el = document.elementFromPoint(x, y);
       const itemEl = el && el.closest ? el.closest('.item-card') : null;
@@ -1769,7 +1770,7 @@ const cmsApp = createApp({
       if (itemEl) {
         const gid = itemEl.getAttribute('data-group-id') || (itemEl.closest('.group-card') && itemEl.closest('.group-card').getAttribute('data-group-id'));
         const iid = itemEl.getAttribute('data-item-id');
-        const group = groups.value.find((g) => g.id === gid);
+        const group = activeGroups.value.find((g) => g.id === gid);
         if (!group) return;
         const item = group.items.find((i) => i.id === iid);
         if (!item) return;
@@ -1780,7 +1781,7 @@ const cmsApp = createApp({
         dropIndex.value = { groupId: group.id, index: position };
       } else if (groupEl) {
         const gid = groupEl.getAttribute('data-group-id');
-        const group = groups.value.find((g) => g.id === gid);
+        const group = activeGroups.value.find((g) => g.id === gid);
         if (!group) return;
         dragOverGroup.value = group.id;
         // Resolve to the nearest item boundary instead of always appending:
@@ -1799,76 +1800,6 @@ const cmsApp = createApp({
         }
         dropIndex.value = { groupId: group.id, index };
       }
-    }
-
-    function onDragOver(event, group, item) {
-      event.stopPropagation();
-      event.dataTransfer.dropEffect = 'move';
-      dragOverGroup.value = group.id;
-      updateDropIndexFromPoint(event.clientX, event.clientY);
-      autoScrollDuringDrag(event);
-    }
-
-    function onDragOverGroup(event, group) {
-      event.dataTransfer.dropEffect = 'move';
-      dragOverGroup.value = group.id;
-      updateDropIndexFromPoint(event.clientX, event.clientY);
-      if (!dropIndex.value || dropIndex.value.groupId !== group.id) {
-        dropIndex.value = { groupId: group.id, index: group.items.length };
-      }
-      autoScrollDuringDrag(event);
-    }
-
-    function onDrop(event, group, item) {
-      if (item) event.stopPropagation();
-      window.removeEventListener('dragover', onDragStartScroll);
-      dragOverGroup.value = null;
-      if (!dragSource) return;
-      const { group: srcGroup, item: srcItem } = dragSource;
-
-      // Determine target from the actual release point.
-      let targetGroup = group;
-      let insertIndex = targetGroup.items.length;
-      const x = event.clientX;
-      const y = event.clientY;
-      const el = document.elementFromPoint(x, y);
-      const itemEl = el && el.closest ? el.closest('.item-card') : null;
-      const groupEl = el && el.closest ? el.closest('.group-card') : null;
-      if (itemEl) {
-        const gid = itemEl.getAttribute('data-group-id') || (itemEl.closest('.group-card') && itemEl.closest('.group-card').getAttribute('data-group-id'));
-        const iid = itemEl.getAttribute('data-item-id');
-        const g = groups.value.find((gg) => gg.id === gid);
-        if (g) {
-          targetGroup = g;
-          const targetItem = g.items.find((i) => i.id === iid);
-          const rect = itemEl.getBoundingClientRect();
-          const idx = targetItem ? g.items.indexOf(targetItem) : g.items.length;
-          insertIndex = y < rect.top + rect.height / 2 ? idx : idx + 1;
-        }
-      } else if (groupEl) {
-        const gid = groupEl.getAttribute('data-group-id');
-        const g = groups.value.find((gg) => gg.id === gid);
-        if (g) {
-          targetGroup = g;
-          insertIndex = g.items.length;
-        }
-      }
-
-      const srcIdx = srcGroup.items.indexOf(srcItem);
-      if (srcIdx > -1) srcGroup.items.splice(srcIdx, 1);
-      if (srcGroup === targetGroup && srcIdx >= 0 && srcIdx < insertIndex) insertIndex -= 1;
-      insertIndex = Math.max(0, Math.min(targetGroup.items.length, insertIndex));
-      targetGroup.items.splice(insertIndex, 0, srcItem);
-
-      dropIndex.value = null;
-      dragSource = null;
-    }
-
-    function onDragEnd() {
-      window.removeEventListener('dragover', onDragStartScroll);
-      dragOverGroup.value = null;
-      dropIndex.value = null;
-      dragSource = null;
     }
 
     // Preview
@@ -2120,18 +2051,18 @@ const cmsApp = createApp({
       setCustomCssSeed, restoreCustomCssTheme, resetCustomCssTheme,
       resetAllCustomCss, confirmResetAllCustomCss, probeFontUrl,
       movingItem, movingFromGroup, dragOverGroup, dropIndex, draggingItem, backups, toast,
-      totalItems, widgetValueLabel, widgetValuePlaceholder,
+      totalItems, activeGroups, activeTotalItems, widgetValueLabel, widgetValuePlaceholder,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,
       addItem, editItem, saveItem, deleteItem,
       moveItemToGroup, confirmMove,
-      onDragStart, onDragOver, onDragOverGroup, onDrop, onDragEnd, startCardDrag, moveItemUp, moveItemDown,
+      startCardDrag, moveItemUp, moveItemDown,
       togglePreview, togglePreviewCollapsed, refreshPreview, loadBackups, restoreBackup,
       loadSettings, openSettings, saveSettings, skipSetup, submitPassword,
       initAuth, dismissPasswordPrompt, closeOnOverlayClick,
       previewCollapsed, isColumn, isResizing, splitRatio, startResize, onResize, stopResize,
       editorPanelStyle, previewPanelStyle,
       widgetTypeLabel,
-      toggleBookmarkGroup, addBookmarkGroup, editBookmarkGroup, deleteBookmarkGroup,
+      addBookmarkGroup, editBookmarkGroup, deleteBookmarkGroup,
       saveBookmarkGroup,
       addBookmarkItem, editBookmarkItem, saveBookmarkItem, deleteBookmarkItem,
       // Language
