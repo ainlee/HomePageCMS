@@ -71,8 +71,11 @@
 - 915150576 側的 tunnel 結構未驗證，本 change 只定義通用接線，
   另一側套用時補對應資訊。
 - registry 推送、多子路徑留待後續 change。
-- 實測發現（88X）：revalidate 走服務名 HOMEPAGE_CMS_REVALIDATE_URL=
-  http://homepage:3000 時，Homepage 的 allowed-hosts 驗證（HOMEPAGE_ALLOWED_HOSTS
-  未含 homepage）擋掉 Host header 為 homepage 的請求、回 400。上線須把服務名
-  加進 HOMEPAGE_ALLOWED_HOSTS 並 recreate Homepage 容器，或改走公開預覽網址重讀
-  （經 tunnel 回來，多一跳但不必動 Homepage）。
+ - revalidate 走服務名：實測發現 Homepage 的 allowed-hosts 驗證會擋掉 Host 為
+   homepage 的請求（回 400）。已把 `homepage` 與 `homepage:3000` 加進
+   `HOMEPAGE_ALLOWED_HOSTS` 並 recreate 容器，cms 容器直連 `http://homepage:3000`
+   回 200。（Node fetch 送出的 Host 帶端口，故需把 `homepage:3000` 也列進名單。）
+ - Cloudflare `/cms` path 規則已下達（本會話經 Cloudflare API 對 tunnel `RGM-79G`
+   做 version 90→91 的 ingress 更新）：`home.928202333.xyz` 加 `path:/cms` 指到
+   容器埠 3457；cloudflared 保留完整 path 不剝前綴，公開 `/cms/` 與根路徑各歸各
+   的，端到端驗證通過。

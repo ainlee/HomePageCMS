@@ -31,8 +31,8 @@
 - [x] 4.1 驗證 Homepage 忽略設定目錄下未知子目錄 cms/（dashboard 列舉、
   寫入、revalidate 全流程）
 - [x] 4.2 權限：非 root 映像對 host 1000:1000 檔案寫入成功、新檔屬主正確
-- [ ] 4.3（部署端待辦）Cloudflare path 規則：/cms/* 保留完整路徑送容器；根 path 維持
-  指 Homepage
+ - [x] 4.3 Cloudflare path 規則：`home.928202333.xyz` 加 `path:/cms` 指到容器埠 3457
+  （插到無 path 的 home 規則之前），根 path 維持指 Homepage
 - [x] 4.4 /cms 下 /api/auth 回 200、上線改一筆服務並存檔、備份落
   cms/backups、重啟容器後設定仍在、/cms 需密碼
 - [x] 4.5 雙模式並存：單機版與容器版同時開、同檔雙寫 409 重載驗證
@@ -54,15 +54,21 @@
   複本目錄進行，真實 `services.yaml` 未動，mtime 不變）；備份落 `cms/backups`；
   重啟容器後設定檔仍在；啟用保護後未帶密碼 401、帶密碼 200。
 - 4.5 同檔雙寫：後存者拿 409，hash 樂觀鎖照設計保護（scratch 複本上驗證）。
-- 4.4 上線前最後一哩：真實 `services.yaml` 的「改一筆並存檔」尚未在活的
-  Homepage 上實做（會改變儀表板內容），留給上線當下做一次；其機制（存檔、備份、
-  衝突、權限）已在同一路徑的 scratch 上全數驗證。
+ - 4.4 上線最後一哩已完成：透過公開 `/cms` 對活著的 Homepage 做原樣 round-trip
+   存檔（HTTP 200、備份落 `cms/backups`），存檔後 `services.yaml` 從存檔前備份
+   byte-identical 還原（`ain:ain`）；機制（存檔、備份、衝突、權限）在 scratch 與
+   真實路徑全數驗證。
 - 4.3 未在此會話下達：88X 的 cloudflared 是 remote token tunnel（規則在
   Cloudflare dashboard、主機無 config 檔），`/cms/*` path 規則需於 dashboard
   端設定，非本機可做。
 
-### 部署端殘留（未在本會話完成，下版處理）
-- revalidate 走服務名 `http://homepage:3000` 時，Homepage 的
-  `HOMEPAGE_ALLOWED_HOSTS` 未含 `homepage`，回 400。上線時需把服務名加進
-  該環境變數並 recreate Homepage 容器（或改走公開預覽網址避開此問）。
-- Cloudflare dashboard 端加 `/cms/*` path 規則指到容器埠，根 path 維持 Homepage。
+ ### 部署端（本會話完成）
+ - revalidate 走服務名 `http://homepage:3000`：已把 `homepage` 與 `homepage:3000`
+   加進 Homepage 的 `HOMEPAGE_ALLOWED_HOSTS` 並 recreate 容器；從 cms 容器直連回
+   `200 / {"revalidated":true}`。
+ - Cloudflare `/cms` path 規則已下達（本會話經 Cloudflare API 對 tunnel `RGM-79G`
+   做 version 90→91 的 ingress 更新）：`home.928202333.xyz` + `path:/cms` →
+   `http://192.168.1.117:3457`，插到無 path 的 home catch-all 之前；公開
+   `https://home.928202333.xyz/cms/` 端到端 200、`<base href=/cms/>` 正確，根路徑仍回
+   Homepage。
+ - 編輯器預覽網址已設為公開 Homepage，`cms/cms-settings.yaml` 落盤（`ain:ain`）。
