@@ -1,0 +1,63 @@
+# Example compose file: add the editor next to an existing Homepage service.
+#
+# Copy this into your Homepage stack's compose file (or keep it as a second
+# file in the same directory) and fill in the values for YOUR machine; nothing
+# here is a default you can leave as-is. The homepage service is shown only for
+# context - keep whatever you already have, unchanged.
+#
+# Before you start: make sure the host directory you mount at /app/config has a
+# cms/ subdirectory for the editor's own data, e.g. /path/to/homepage/cms/.
+services:
+  # ---- your existing Homepage service, unchanged -----------------------------
+  homepage:
+    image: gethomepage/homepage:latest
+    ports:
+      - '3800:3000' # your current mapping
+    volumes:
+      - HOMEPAGE_CONFIG_DIR:/app/config # your real config directory
+    restart: unless-stopped
+
+  # ---- the editor: a separate container on the same stack --------------------
+  homepage-cms:
+    # Local build; tag it with the git short SHA so two running instances are
+    # tellable apart. Build with: docker build -t homepage-cms:$(git rev-parse --short HEAD) .
+    # (or :latest for quick iteration). No registry push in this version.
+    build: {context: .}
+    image: homepage-cms:latest
+    # The host port must not collide with your standalone editor (3899 in the
+    # single-machine layout): pick a free one and keep it for the container.
+    ports:
+      - '127.0.0.1:3457:3456' # LAN-only; the public URL goes through the tunnel
+    environment:
+      # Container convention: listen on all interfaces, the tunnel/reverse proxy
+      # in front decides who can reach it.
+      HOST: '0.0.0.0'
+      PORT: '3456'
+      # Mount points the editor works against (see the volumes below).
+      HOMEPAGE_CONFIG_PATH: /app/config
+      HOMEPAGE_CMS_SETTINGS: /app/cms/cms-settings.yaml
+      HOMEPAGE_BACKUP_PATH: /app/cms/backups
+      # The editor is reached at <domain>/cms/, so it serves itself under that
+      # prefix. Empty means run at the domain root instead.
+      HOMEPAGE_CMS_BASE_PATH: /cms
+      # After a save the editor asks Homepage to re-read its settings. Inside
+      # the shared network the service name reaches it directly, no round trip
+      # through the public URL. When unset the preview URL below is used.
+      HOMEPAGE_CMS_REVALIDATE_URL: 'http://homepage:3000'
+      # The public URL of the Homepage dashboard, for the preview panel.
+      HOMEPAGE_PREVIEW_URL: 'https://YOUR-DASHBOARD-EXAMPLE.COM'
+      # Access protection: do not put a password in this file. Enable it in the
+      # editor's settings dialog instead; the salted hash is stored in the cms/
+      # settings file, which survives container recreation.
+    volumes:
+      # The Homepage config directory: the editor reads/writes services.yaml,
+      # bookmarks.yaml, settings.yaml and custom.css there.
+      - HOMEPAGE_CONFIG_DIR:/app/config
+      # The cms/ subdirectory of that same path: the editor's own settings file
+      # and its backups.
+      - HOMEPAGE_CONFIG_DIR/cms:/app/cms
+    restart: unless-stopped
+
+# Tunnel: point the /cms/* path rule of YOUR-DASHBOARD-EXAMPLE.COM at the editor's
+# internal port and keep the path (do not strip it); the editor recognises its
+# own prefix. The root path of the domain keeps pointing at the Homepage service.

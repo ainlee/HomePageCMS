@@ -52,7 +52,11 @@ const editor = spawn(process.execPath, ['server.js'], {
     PORT: String(PORT),
     HOST: '127.0.0.1',
     HOMEPAGE_CONFIG_PATH: configDir,
-    HOMEPAGE_BACKUP_PATH: join(configDir, 'backups')
+    HOMEPAGE_BACKUP_PATH: join(configDir, 'backups'),
+    // Isolate the editor's own settings file too. Without this the editor falls
+    // back to the installation's cms-settings.yaml, which may have access
+    // protection on - and this test's headless browser carries no password.
+    HOMEPAGE_CMS_SETTINGS: join(configDir, 'cms-settings.yaml')
   }),
   stdio: 'ignore'
 });
@@ -220,10 +224,18 @@ check('the picker looks like the swatch next to it',
   look.wrapperPadding === '0px', JSON.stringify(look));
 
 // The real installation must not have been touched.
-const live = await (await fetch('http://localhost:3456/api/homepage-settings')).json();
-check('the running installation is not affected',
-  !String(live.data.values.color).includes('not-a-homepage-palette'),
-  'color=' + live.data.values.color);
+// The running installation - the suite target, APP_URL, or the default port - must
+// not have picked up the test palette. An absent or password-protected install
+// cannot be inspected from here, so the check is skipped instead of failing.
+const liveUrl = (process.env.APP_URL || 'http://localhost:3456') + '/api/homepage-settings';
+try {
+  const live = await (await fetch(liveUrl)).json();
+  check('the running installation is not affected',
+    !String(live.data.values.color).includes('not-a-homepage-palette'),
+    'color=' + live.data.values.color);
+} catch (err) {
+  console.log('SKIP  the running installation is not affected  ('+ err.message + ')');
+}
 
 stop();
 cleanup();

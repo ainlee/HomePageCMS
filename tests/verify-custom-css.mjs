@@ -43,7 +43,11 @@ const editor = spawn(process.execPath, ['server.js'], {
     PORT: String(PORT),
     HOST: '127.0.0.1',
     HOMEPAGE_CONFIG_PATH: configDir,
-    HOMEPAGE_BACKUP_PATH: join(configDir, 'backups')
+    HOMEPAGE_BACKUP_PATH: join(configDir, 'backups'),
+    // Isolate the editor's own settings file too. Without this the editor falls
+    // back to the installation's cms-settings.yaml, which may have access
+    // protection on - and this test's headless browser carries no password.
+    HOMEPAGE_CMS_SETTINGS: join(configDir, 'cms-settings.yaml')
   }),
   stdio: 'ignore'
 });

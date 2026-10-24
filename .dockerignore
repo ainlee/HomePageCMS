@@ -1,0 +1,44 @@
+# Everything below stays out of the image. The editor's own data (settings,
+# backups, user-made locales/themes, machine launcher files) lives on the host
+# and is provided through volumes - it must never ship inside the image.
+node_modules
+backups/
+cms-settings.yaml
+.homepage-cms.yaml
+# Machine launcher settings and logs
+start-editor.local.bat
+*.log
+server.log
+# The live config: only the committed examples ship, the real YAML stays on the host
+config/*.yaml
+!config/*.example.yaml
+# User-made colour schemes and language packs; the built-ins are copied
+themes/*.ini
+!themes/midnight.ini
+!themes/abyss.ini
+!themes/forest.ini
+!themes/amber.ini
+!themes/graphite.ini
+!themes/ivory.ini
+!themes/lavender.ini
+locales/*.ini
+!locales/zh-TW.ini
+!locales/zh-CN.ini
+!locales/ja.ini
+!locales/en.ini
+# Test screenshots and development tooling
+shots/
+.codex-remote-attachments/
+.agents/
+.claude/
+.gitnexus/
+openspec/
+tests/
+tools/
+docs/
+.git
+.gitignore
+.gitattributes
+.env
+.DS_Store
+Thumbs.db

@@ -187,6 +187,60 @@ Homepage 官方提供的客製樣式檔。有一個坑要注意：**儀表板若
         container: code-server
 ```
 
+## Docker 部署
+
+編輯器本身是一顆 Node 行程，可以直接 `npm start`，也可以用 Docker 跟 Homepage 放在
+同一個 stack：Homepage 照舊在根路徑，編輯器掛在同一網域下一層 `/cms`，兩邊共用
+同一份設定目錄。兩種跑法讀寫的是同一批 YAML，可以並存，切換只是停一邊、起另一邊。
+
+### 建置與啟動
+
+```bash
+# 映像先本地 build，tag 用 git 短 SHA，讓同時跑著的兩顆實例看得出來
+docker build -t homepage-cms:$(git rev-parse --short HEAD) .
+```
+
+把 [compose.example.yml](compose.example.yml) 複製進你的 Homepage stack，填上自己
+機器的值再啟動：
+
+```bash
+docker compose up -d homepage-cms
+```
+
+### 容器相關環境變數
+
+| 變數 | 預設 | 說明 |
+| --- | --- | --- |
+| `HOMEPAGE_CMS_BASE_PATH` | 空（掛根） | 編輯器的網址前綴，例如 `/cms`；前端與 API 都跟著前綴走 |
+| `HOMEPAGE_CMS_REVALIDATE_URL` | 沿用預覽網址 | 存檔後重讀 Homepage 的目標；同 stack 內填服務名（`http://homepage:3000`）直連 |
+| `HOST` | `127.0.0.1` | 容器內固定 `0.0.0.0`，對外由 tunnel／反代擋 |
+
+`compose.example.yml` 把編輯器的自身設定檔與備份放在 Homepage 設定目錄下的 `cms/`
+子目錄（`HOMEPAGE_CMS_SETTINGS`、`HOMEPAGE_BACKUP_PATH` 都指進 `cms/`），兩個容器
+共用同一個設定目錄掛載。`cms/` 是機器相關資料，不進版控。
+
+### 前綴 `/cms` 怎麼走通
+
+編輯器自己認前綴，不需要加第三顆反代容器。設定 `HOMEPAGE_CMS_BASE_PATH=/cms` 後，
+伺服器把靜態、`/vendor` 與 `/api` 全部掛在前綴下，並把前綴寫進 `window.__META__`，
+前端的 asset 與 API 呼叫都跟著走。Cloudflare tunnel 的 path 規則要**保留完整路徑**
+（`/cms/*` 原樣送容器，不要 strip），根路徑維持指 Homepage。未設前綴時行為與掛根
+完全相同。
+
+### 雙模式並存
+
+- 單機版照舊 `npm start` 或 `start-editor.bat`，設定檔是專案根 `cms-settings.yaml`。
+- 容器版跟 Homepage 同 stack，設定檔在 `cms/cms-settings.yaml`。
+- 兩版讀寫同一批 Homepage YAML，同時改同一份檔時，後存的一方會拿到 409，重載再存
+  即可（既有 hash 樂觀鎖的保護，不是 bug）。
+- 同一個 tunnel hostname 一次只指一邊；要兩版都對外，就開兩個 hostname 各指各的。
+
+### 存取保護
+
+不要把密碼寫進 compose。啟用介面上的存取保護，雜湊（salt + scrypt）會存進 `cms/`
+底下的設定檔，容器重建也不丟；對外的 `/cms` 就會要求密碼。`HOMEPAGE_CMS_PASSWORD`
+環境變數另有一套啟動時直接設定的路徑，兩擇一即可。
+
 ## 開發
 
 本專案以 OpenSpec 規格驅動，行為記錄在 `openspec/specs/`；要新增或變更行為，先在

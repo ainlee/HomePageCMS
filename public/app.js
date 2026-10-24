@@ -1,6 +1,9 @@
 const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
 // The colour ramp maths, shared with the server (lib/ramp.js).
 const ramp = window.HomepageRamp;
+// The path the editor is mounted under (e.g. /cms); empty when it runs at the
+// root. The server puts it in window.__META__ so page and code always agree.
+const BASE = (window.__META__ || {}).basePath || '';
 
 const cmsApp = createApp({
   setup() {
@@ -907,7 +910,7 @@ const cmsApp = createApp({
       if (apiPassword.value) headers['X-CMS-Password'] = apiPassword.value;
       // The server replies in the language the editor is showing.
       headers['Accept-Language'] = i18n.locale;
-      const res = await fetch(url, Object.assign({}, options, { headers, cache: 'no-store' }));
+      const res = await fetch(BASE + url, Object.assign({}, options, { headers, cache: 'no-store' }));
       if (res.status === 401) {
         // The stored password is wrong or gone: forget it and ask again.
         apiPassword.value = '';
@@ -949,7 +952,7 @@ const cmsApp = createApp({
     // prompt would appear only after the user had already clicked around.
     async function initAuth() {
       try {
-        const res = await fetch('/api/auth', { cache: 'no-store' });
+        const res = await fetch(BASE + '/api/auth', { cache: 'no-store' });
         const json = await res.json();
         authState.required = !!(json.data && json.data.required);
       } catch (err) {

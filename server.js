@@ -14,6 +14,11 @@ const { parseIni } = require('./lib/ini');
 const pkg = require('./package.json');
 
 const app = express();
+// The whole editor can be mounted under a subpath (e.g. /cms behind a tunnel) so the
+// dashboard stays at the root of the domain. Every route lives in one router and is
+// mounted at BASE_PATH; Express strips that prefix so the handlers below are unchanged.
+// An empty BASE_PATH mounts at the root (current behaviour).
+const appRouter = express.Router();
 // Runtime state such as the access-password policy must never be served from a cache,
 // so disable ETags entirely and rely on the explicit Cache-Control headers below.
 app.set('etag', false);
@@ -44,23 +49,23 @@ const BOOTSTRAP_FILE = process.env.HOMEPAGE_CMS_SETTINGS || DEFAULT_SETTINGS_FIL
 app.use(express.json({ limit: '10mb' }));
 // The page is served with the current language and colour scheme already applied,
 // so a reload does not show the default dark theme or the wrong language first.
-app.get('/', renderIndex);
-app.get('/index.html', renderIndex);
+appRouter.get('/', renderIndex);
+appRouter.get('/index.html', renderIndex);
 // The editor is a single page made of a hand-written template and a hand-written
 // script. A browser that keeps an old copy of one of them and a new copy of the other
 // makes Vue render with bindings that no longer exist, which kills the whole page.
 // The files are tiny, so they are always fetched fresh instead of being cached.
-app.use(express.static(path.join(__dirname, 'public'), {
+appRouter.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res) => res.setHeader('Cache-Control', 'no-store')
 }));
 // The browser needs a YAML writer, Vue and the icon font. All three are installed as
 // packages and served from node_modules, so the editor works on a network without
 // internet access.
-app.use('/vendor/js-yaml', express.static(path.join(__dirname, 'node_modules', 'js-yaml', 'dist')));
-app.use('/vendor/vue', express.static(path.join(__dirname, 'node_modules', 'vue', 'dist')));
-app.use('/vendor/mdi', express.static(path.join(__dirname, 'node_modules', '@mdi', 'font')));
+appRouter.use('/vendor/js-yaml', express.static(path.join(__dirname, 'node_modules', 'js-yaml', 'dist')));
+appRouter.use('/vendor/vue', express.static(path.join(__dirname, 'node_modules', 'vue', 'dist')));
+appRouter.use('/vendor/mdi', express.static(path.join(__dirname, 'node_modules', '@mdi', 'font')));
 // The colour ramp maths, shared with the browser so both use the same one.
-app.get('/vendor/ramp.js', (req, res) => {
+appRouter.get('/vendor/ramp.js', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.type('application/javascript').send(fs.readFileSync(path.join(PROJECT_DIR, 'lib', 'ramp.js'), 'utf8'));
 });
@@ -79,6 +84,10 @@ const ENV_PASSWORD = (process.env.HOMEPAGE_CMS_PASSWORD || '').trim();
 const ENV_LOCALES_PATH = (process.env.HOMEPAGE_CMS_LOCALES_PATH || '').trim();
 const ENV_THEMES_PATH = (process.env.HOMEPAGE_CMS_THEMES_PATH || '').trim();
 const ENV_LOCALE = (process.env.HOMEPAGE_CMS_LOCALE || '').trim();
+const REVALIDATE_URL = (process.env.HOMEPAGE_CMS_REVALIDATE_URL || '').trim();
+// Mount prefix for the editor ('/cms'); '' means the root. Leading slash, no trailing.
+const RAW_BASE = (process.env.HOMEPAGE_CMS_BASE_PATH || '').trim();
+const BASE_PATH = RAW_BASE ? '/' + RAW_BASE.replace(/^\/+/, '').replace(/\/+$/, '') : '';
 
 // The bootstrap file is where the editor looks for its settings. When the settings
 // live somewhere else, this file only holds a pointer to them.
@@ -246,12 +255,16 @@ function renderIndex(req, res) {
     '<link rel="stylesheet" href="style.css">\n    ' + styleBlock
   );
   html = html.replace('<html lang="zh-TW">', '<html lang="' + payload.locale + '">');
+  // <base> makes the relative asset URLs in the page resolve under the mount
+  // path (e.g. /cms/); at the root it simply points at '/'.
+  html = html.replace('<head>', '<head><base href="' + (BASE_PATH ? BASE_PATH + '/' : '/') + '">');
   const boot = '<script>window.__I18N__=' + safeJson(payload) + ';window.__THEME__=' +
     safeJson({ id: theme ? theme.id : '', name: theme ? theme.name : '', vars }) +
     ';window.__META__=' + safeJson({
       name: 'HomePageCMS',
       version: pkg.version,
-      repo: (pkg.repository && pkg.repository.url) || ''
+      repo: (pkg.repository && pkg.repository.url) || '',
+      basePath: BASE_PATH
     }) + ';</script>';
   html = html.replace('<script src="app.js"></script>', boot + '\n  <script src="app.js"></script>');
   res.setHeader('Cache-Control', 'no-store');
@@ -475,7 +488,7 @@ function passwordMatches(candidate) {
   return crypto.timingSafeEqual(derived, stored);
 }
 
-app.use('/api', (req, res, next) => {
+appRouter.use('/api', (req, res, next) => {
   // The password policy and every other piece of runtime state are decided on the
   // server and must not be cached by a browser or an intermediate proxy: a stale
   // /api/auth answer is exactly how one device ends up thinking no password is
@@ -506,12 +519,12 @@ app.use('/api', (req, res, next) => {
 });
 
 // GET /api/auth - tells the browser whether a password is needed, without needing one
-app.get('/api/auth', (req, res) => {
+appRouter.get('/api/auth', (req, res) => {
   const protection = protectionSetting();
   res.json({ success: true, data: { required: protection.enabled, source: protection.source } });
 });
 
-app.get('/api/services', (req, res) => {
+appRouter.get('/api/services', (req, res) => {
   try {
     const file = servicesFile();
     if (!fs.existsSync(file)) {
@@ -526,7 +539,7 @@ app.get('/api/services', (req, res) => {
 });
 
 // GET /api/bookmarks - read bookmarks.yaml
-app.get('/api/bookmarks', (req, res) => {
+appRouter.get('/api/bookmarks', (req, res) => {
   try {
     const file = bookmarksFile();
     if (!fs.existsSync(file)) {
@@ -549,7 +562,7 @@ function checkUnchanged(file, expected) {
 }
 
 // PUT /api/services - write services.yaml with backup
-app.put('/api/services', (req, res) => {
+appRouter.put('/api/services', (req, res) => {
   try {
     const file = servicesFile();
     const conflict = checkUnchanged(file, req.body?.hash);
@@ -569,7 +582,7 @@ app.put('/api/services', (req, res) => {
 });
 
 // PUT /api/bookmarks - write bookmarks.yaml with backup
-app.put('/api/bookmarks', (req, res) => {
+appRouter.put('/api/bookmarks', (req, res) => {
   try {
     const file = bookmarksFile();
     const conflict = checkUnchanged(file, req.body?.hash);
@@ -609,7 +622,7 @@ function settingsHeader(content) {
 }
 
 // GET /api/homepage-settings - the appearance of the Homepage dashboard
-app.get('/api/homepage-settings', (req, res) => {
+appRouter.get('/api/homepage-settings', (req, res) => {
   try {
     const file = homepageSettingsFile();
     const exists = fs.existsSync(file);
@@ -637,7 +650,7 @@ app.get('/api/homepage-settings', (req, res) => {
 });
 
 // PUT /api/homepage-settings - write the appearance fields of settings.yaml
-app.put('/api/homepage-settings', (req, res) => {
+appRouter.put('/api/homepage-settings', (req, res) => {
   try {
     const file = homepageSettingsFile();
     const conflict = checkUnchanged(file, req.body && req.body.hash);
@@ -683,7 +696,7 @@ app.put('/api/homepage-settings', (req, res) => {
 });
 
 // GET /api/homepage-custom-css - the stylesheet Homepage loads on top of its own
-app.get('/api/homepage-custom-css', (req, res) => {
+appRouter.get('/api/homepage-custom-css', (req, res) => {
   try {
     const file = homepageCustomCssFile();
     const exists = fs.existsSync(file);
@@ -719,7 +732,7 @@ app.get('/api/homepage-custom-css', (req, res) => {
 // The editor sends the parts it holds, and the server assembles them: the font
 // block first (an @import only works at the top of a stylesheet), then one block
 // per customised palette, then the content the user wrote themselves.
-app.put('/api/homepage-custom-css', (req, res) => {
+appRouter.put('/api/homepage-custom-css', (req, res) => {
   try {
     const file = homepageCustomCssFile();
     const conflict = checkUnchanged(file, req.body && req.body.hash);
@@ -770,7 +783,7 @@ app.put('/api/homepage-custom-css', (req, res) => {
 });
 
 // POST /api/homepage-custom-css/ramp - a colour ramp for a seed colour
-app.post('/api/homepage-custom-css/ramp', (req, res) => {
+appRouter.post('/api/homepage-custom-css/ramp', (req, res) => {
   try {
     const body = req.body || {};
     const paletteId = String(body.palette || '').trim();
@@ -793,7 +806,7 @@ app.post('/api/homepage-custom-css/ramp', (req, res) => {
 // The address the user types is either a stylesheet with font-face rules, or a
 // font file. The editor needs to know which, and for a stylesheet it needs the
 // family names inside it, so the user does not have to spell them out.
-app.post('/api/homepage-font-probe', async (req, res) => {
+appRouter.post('/api/homepage-font-probe', async (req, res) => {
   const url = String((req.body && req.body.url) || '').trim();
   if (!/^https?:\/\//i.test(url)) {
     return res.status(400).json({ success: false, error: '設定值格式不正確: url' });
@@ -864,14 +877,17 @@ async function readAtMost(response, limit) {
 // only /api/revalidate clears it. Without this the preview would keep showing the
 // old colours after a save. The call goes out from the server, so it is not
 // stopped by the browser's cross-origin rules.
-app.post('/api/homepage-revalidate', async (req, res) => {
-  const preview = previewUrlSetting().value;
-  if (!preview) {
+appRouter.post('/api/homepage-revalidate', async (req, res) => {
+  // The dedicated revalidate URL (HOMEPAGE_CMS_REVALIDATE_URL) wins, so a container can
+  // point at the Homepage service name on the shared docker network; otherwise the
+  // preview URL is used (current behaviour).
+  const targetBase = REVALIDATE_URL || previewUrlSetting().value;
+  if (!targetBase) {
     return res.status(400).json({ success: false, error: '尚未設定預覽網址' });
   }
   let target;
   try {
-    target = new URL('/api/revalidate', preview).toString();
+    target = new URL('/api/revalidate', targetBase).toString();
   } catch (err) {
     return res.status(400).json({ success: false, error: '預覽網址格式不正確' });
   }
@@ -888,12 +904,12 @@ app.post('/api/homepage-revalidate', async (req, res) => {
 });
 
 // GET /api/settings - the runtime settings the editor is running with
-app.get('/api/settings', (req, res) => {
+appRouter.get('/api/settings', (req, res) => {
   res.json({ success: true, data: settingsPayload() });
 });
 
 // PUT /api/settings - store the editor's settings
-app.put('/api/settings', (req, res) => {
+appRouter.put('/api/settings', (req, res) => {
   try {
     const body = req.body || {};
     const next = { ...readCmsSettings() };
@@ -1043,13 +1059,13 @@ app.put('/api/settings', (req, res) => {
 });
 
 // GET /api/i18n - the language packs in the directory and the catalogue of one of them
-app.get('/api/i18n', (req, res) => {
+appRouter.get('/api/i18n', (req, res) => {
   const code = String((req.query && req.query.locale) || localeSetting().value || '').trim();
   res.json({ success: true, data: i18n.localePayload(localesDirSetting().value, code) });
 });
 
 // GET /api/themes - every colour scheme, built-in and user-made
-app.get('/api/themes', (req, res) => {
+appRouter.get('/api/themes', (req, res) => {
   res.json({
     success: true,
     data: {
@@ -1061,7 +1077,7 @@ app.get('/api/themes', (req, res) => {
 });
 
 // GET /api/themes/:id/export - the scheme as INI text, so it can be shared
-app.get('/api/themes/:id/export', (req, res) => {
+appRouter.get('/api/themes/:id/export', (req, res) => {
   const id = String(req.params.id || '').trim();
   const file = path.join(themesDirSetting().value, id + '.ini');
   if (!themeLib.isValidId(id) || !fs.existsSync(file)) {
@@ -1071,7 +1087,7 @@ app.get('/api/themes/:id/export', (req, res) => {
 });
 
 // POST /api/themes/import - read an INI file the user picked and store it
-app.post('/api/themes/import', (req, res) => {
+appRouter.post('/api/themes/import', (req, res) => {
   try {
     const content = String((req.body && req.body.content) || '');
     if (!content.trim()) {
@@ -1099,7 +1115,7 @@ app.post('/api/themes/import', (req, res) => {
 });
 
 // POST /api/themes - save a colour scheme as themes/<id>.ini
-app.post('/api/themes', (req, res) => {
+appRouter.post('/api/themes', (req, res) => {
   try {
     const body = req.body || {};
     const theme = {
@@ -1127,7 +1143,7 @@ app.post('/api/themes', (req, res) => {
 });
 
 // DELETE /api/themes/:id - remove a colour scheme the user made
-app.delete('/api/themes/:id', (req, res) => {
+appRouter.delete('/api/themes/:id', (req, res) => {
   try {
     const dir = themesDirSetting().value;
     const id = String(req.params.id || '').trim();
@@ -1146,7 +1162,7 @@ app.delete('/api/themes/:id', (req, res) => {
 });
 
 // GET /api/backups - list available backups
-app.get('/api/backups', (req, res) => {
+appRouter.get('/api/backups', (req, res) => {
   try {
     const files = fs.readdirSync(backupDirSetting().value)
       .filter(f => (f.startsWith('services-') || f.startsWith('settings-')) && f.endsWith('.yaml'))
@@ -1159,7 +1175,7 @@ app.get('/api/backups', (req, res) => {
 });
 
 // POST /api/restore - restore from backup
-app.post('/api/restore', (req, res) => {
+appRouter.post('/api/restore', (req, res) => {
   try {
     const { filename } = req.body;
     if (!filename || filename.includes('..') || filename.includes('/')) {
@@ -1187,6 +1203,17 @@ app.post('/api/restore', (req, res) => {
   }
 });
 
+if (BASE_PATH) {
+  // /cms answers with a 301 to /cms/ so relative asset URLs resolve under it.
+  // Match the exact prefix only, so /cms/ itself never redirects in a loop.
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && req.originalUrl.split('?')[0] === BASE_PATH) {
+      return res.redirect(301, BASE_PATH + '/');
+    }
+    next();
+  });
+}
+app.use(BASE_PATH || '/', appRouter);
 app.listen(Number(EFFECTIVE_PORT), EFFECTIVE_BIND, () => {
   const preview = previewUrlSetting();
   // The version is in the line on purpose: when two instances are running, this is
