@@ -19,6 +19,7 @@ start-editor.local.bat
 # config/*.example.yaml files show the expected shape.
 config/services.yaml
 config/bookmarks.yaml
+config/settings.yaml
 
 # The editor's own settings file (preview target). Machine-specific, like the
 # configuration above.
