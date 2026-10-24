@@ -192,7 +192,7 @@ Homepage 官方提供的客製樣式檔。有一個坑要注意：**儀表板若
 編輯器有兩種跑法，而且**可以同時跑**：
 
 - **本地版**：跑在你自己的電腦上，透過網路讀寫 Homepage 的設定檔。沒有裝 Docker 就用這個。
-- **Docker 版**：把編輯器放進容器，用**自己一份 compose 檔**跟 Homepage 並排，共用同一個設定資料夾。兩邊各自的程式各自升級、互不碰對方的檔。Homepage 本來就用 Docker 跑的話，用這個最省事。
+- **Docker 版**：把編輯器放進容器、跟 Homepage 並排，共用同一個設定資料夾。有兩種擺法（見下方 Docker 節）：**獨立 compose 檔（建議，兩邊升級各碰各的）**，或加進 Homepage 同一份 compose（省事，但兩邊綁在同一張 Dockge 卡片）。
 
 兩種跑法改的是同一批 YAML 檔案，不需要搬資料。記一個原則就好：**看，兩邊都可以；存檔，一次只用一邊。** 如果兩邊真的同時存了同一份檔，後存的那邊會請你重新整理一次再存，不會蓋掉對方的東西。
 
@@ -202,17 +202,44 @@ Homepage 官方提供的客製樣式檔。有一個坑要注意：**儀表板若
 
 ### Docker 版
 
-1. 把 [compose.example.yml](compose.example.yml) 放進你自己的資料夾（**獨立 stack**，建議做法：Homepage 升級跟我們升級各碰各的檔，Dockge 各一卡片）。不介意的話也可以把同一段服務抄進 Homepage 的 compose 檔裡（同 stack），檔案裡有寫到差別在哪。
-2. 填上你自己機器的值：埠號、設定資料夾路徑、對外網域。並在建資料夾裡建一個 `cms/` 子資料夾，放編輯器的設定檔與備份。
-3. 啟動：
+先在跑 Homepage 的那台機器上備好映像。把程式碼放上去（clone 或複製都行），然後 build：
 
-   ```bash
-   docker compose up -d homepage-cms
-   ```
+```bash
+git clone https://github.com/ainlee/HomePageCMS.git
+cd HomePageCMS
+docker build -t homepage-cms:$(git rev-parse --short HEAD) .
+```
 
-   第一次跑會自動建置映像；以後更新程式碼，重跑同一行即可。
+接下來兩種擺法。服務區塊（`homepage-cms:` 那段）就照 [compose.example.yml](compose.example.yml) 抄，差別只有兩件事：**放哪份 compose 檔**、**`HOMEPAGE_CMS_REVALIDATE_URL` 填什麼**。
 
-容器起來之後，編輯器就在 Homepage 同一網域的 `/cms` 下面（例如 `https://你的網域/cms/`），Homepage 本身照舊在根。如果走 Cloudflare Tunnel，加一條 `/cms` 的 path 規則指到容器埠就好，**保留路徑原樣、不要剝掉**——編輯器自己知道它在 `/cms` 下面。
+#### 擺法 A：獨立 compose 檔（建議）
+
+編輯器有自己一份 `docker-compose.yml`，Homepage 也是自己一份。以後 Homepage 升級只碰他的檔、我們升級只碰我們的檔，互不影響。
+
+1. 在新資料夾建一份 `docker-compose.yml`，把 `homepage-cms` 服務區塊貼進去
+2. 填上你自己機器的值：
+   - `image`：剛 build 出來的 tag（例如 `homepage-cms:287b626`）
+   - `ports`：容器對外的 host 埠，別跟機器上別的東西撞
+   - `volumes`：Homepage 的設定目錄路徑；並在這個目錄下建一個空的 `cms/` 資料夾（放編輯器的設定檔與備份）
+   - `HOMEPAGE_CMS_REVALIDATE_URL`：**公開的儀表板網址**（例如 `https://home.example.com`）。兩邊是兩個獨立 stack、網路是分開的，存檔後通知 Homepage 重讀只能走公開網址
+   - `HOMEPAGE_PREVIEW_URL`：同一個公開網址（右側預覽用）
+3. 啟動：`docker compose up -d`
+
+以後升級編輯器：程式碼換新版、重新 build 新 tag、把 `image` 那行改成新 tag、再 `docker compose up -d`——只有編輯器重啟，Homepage 完全不動。
+
+#### 擺法 B：同一份 compose 檔（省事）
+
+把 `homepage-cms` 服務區塊直接加進 Homepage 現有的 `docker-compose.yml`，兩支服務綁在同一個 stack 裡。
+
+1. 服務區塊一樣照抄、貼進 Homepage 的 compose 檔
+2. 只有一處不同：`HOMEPAGE_CMS_REVALIDATE_URL` 填**服務名** `http://homepage:3000`（`3000` 是 Homepage 容器**內部**的埠，就是他 `ports` 那行 `3800:3000` 冒號右邊的那個數字）。同一張 docker 網路直接連得到，比走公開網址還快
+3. `docker compose up -d`
+
+代價：這份檔變成兩邊共用。之後任何人改它（Homepage 升級、我們加變數）都會讓 Dockge 把整張卡片標成待更新，按「更新」前會連另一支服務一起重做。介意的話用擺法 A。
+
+#### 最後一步：對外（走 tunnel 才需要）
+
+在 tunnel（例如 Cloudflare）上、Homepage 那個網域加一條 `/cms` 的 path 規則，指到編輯器的 host 埠，**路徑原樣保留、不要剝掉**——編輯器自己知道它掛在 `/cms` 底下。開 `https://你的網域/cms/` 就是編輯器，根路徑照舊是 Homepage。
 
 ### 兩種跑法各在哪
 
