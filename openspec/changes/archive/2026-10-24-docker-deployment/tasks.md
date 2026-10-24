@@ -40,7 +40,7 @@
 ## 5. 規格與封存
 
 - [x] 5.1 openspec validate docker-deployment 通過
-- [ ] 5.2 實作與 4.x 驗證全過後，主規格同步並 openspec archive
+- [x] 5.2 實作與 4.x 驗證全過後，主規格同步並 openspec archive
 
 
 ## 驗證記錄（本會話實測，2026-10-24）
