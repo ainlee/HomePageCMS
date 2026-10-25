@@ -1458,26 +1458,67 @@ body {
 }
 
 
-/* Upgrade button with a breathing glow */
+/* Upgrade button, lit: the pulse must read as "there is a new version", so it
+   is kept tight around the button but strong, and the glyph itself breathes
+   on the same beat.
+   Three layers, one beat:
+   - a compact glow hugging the border (upgrade-glow),
+   - a light line running around the border: a conic gradient masked to a
+     2px ring, rotating in place (upgrade-ring-spin). If the browser does
+   not support @property the ring just stands still - the glow and the icon
+   still breathe, so the indicator never vanishes,
+   - the icon fading in and out (upgrade-icon-breathe). */
+@property --upgrade-ring-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
 .upgrade-btn {
   position: relative;
 }
 .upgrade-btn.upgrade-available {
   color: var(--accent);
-  animation: upgrade-breathe 2.4s ease-in-out infinite;
+  border-color: var(--accent);
+  animation: upgrade-glow 2s ease-in-out infinite;
+}
+.upgrade-btn.upgrade-available .mdi {
+  animation: upgrade-icon-breathe 2s ease-in-out infinite;
 }
 .upgrade-btn.upgrade-available:disabled {
   opacity: 1;
 }
-@keyframes upgrade-breathe {
-  0%, 100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent);
-    opacity: 1;
-  }
-  50% {
-    box-shadow: 0 0 12px 3px color-mix(in srgb, var(--accent) 45%, transparent);
-    opacity: 0.85;
-  }
+.upgrade-btn.upgrade-available::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: calc(var(--radius) + 2px);
+  padding: 2px;
+  background: conic-gradient(
+    from var(--upgrade-ring-angle),
+    transparent 0deg,
+    color-mix(in srgb, var(--accent) 80%, white) 40deg,
+    var(--accent) 80deg,
+    transparent 140deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: upgrade-ring-spin 3s linear infinite;
+  pointer-events: none;
+}
+@keyframes upgrade-ring-spin {
+  to { --upgrade-ring-angle: 360deg; }
+}
+/* Tight range, real intensity: the glow stays within a few pixels of the
+   border instead of washing out the neighbouring buttons. */
+@keyframes upgrade-glow {
+  0%, 100% { box-shadow: 0 0 3px 0 color-mix(in srgb, var(--accent) 85%, transparent); }
+  50% { box-shadow: 0 0 9px 1px color-mix(in srgb, var(--accent) 100%, transparent); }
+}
+@keyframes upgrade-icon-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 /* Responsive: mobile landscape */
 @media (min-width: 769px) and (max-width: 1024px) {
