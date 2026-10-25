@@ -43,4 +43,6 @@ COPY entrypoint.sh /entrypoint.sh
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD ["node", "-e", "const p=(process.env.HOMEPAGE_CMS_BASE_PATH||'');fetch('http://127.0.0.1:'+(process.env.PORT||'3456')+p+'/api/auth').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
-CMD ["/entrypoint.sh"]
+# No exec bit needed: the script is invoked through sh, so the image
+# never runs code with a mode a non-root build user could not set.
+CMD ["sh", "/entrypoint.sh"]
