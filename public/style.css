@@ -325,7 +325,7 @@ body {
   padding: 8px 12px;
 }
 
-.item-drag { color: var(--text-dim); cursor: grab; font-size: 14px; }
+.item-drag { color: var(--text-dim); cursor: grab; font-size: 14px; touch-action: none; }
 .item-drag:active { cursor: grabbing; }
 
 .item-icon-wrap { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }

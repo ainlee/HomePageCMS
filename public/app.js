@@ -1656,30 +1656,49 @@ const cmsApp = createApp({
     }
 
     let dragGhost = null;
+    // A finger on the handle records its press before the drag commits: the
+    // card lifts only after the finger has moved a short distance, so a tap
+    // is not mistaken for a drag.
+    let dragPress = null;
 
+    // One engine for every pointer: a mouse lifts the card on the press
+    // itself, a finger has to travel a bit first.
     function startCardDrag(event, group, item) {
-      if (event.button !== 0) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
-      dragSource = { group, item };
-      draggingItem.value = item;
-      dropIndex.value = null;
-      dragOverGroup.value = group.id;
+      dragPress = {
+        group, item,
+        x: event.clientX, y: event.clientY,
+        card: event.currentTarget && event.currentTarget.closest
+          ? event.currentTarget.closest('.item-card')
+          : null,
+        committed: false
+      };
+      document.addEventListener('pointermove', onCardDragMove);
+      document.addEventListener('pointerup', endCardDrag);
+      document.addEventListener('pointercancel', cancelCardDrag);
+      // A mouse lifts the card on the press itself; a finger first has to
+      // travel a short distance, which commits the drag in onCardDragMove.
+      if (event.pointerType !== 'touch') commitCardDrag(event.clientX, event.clientY);
+    }
 
-      const card = event.currentTarget && event.currentTarget.closest
-        ? event.currentTarget.closest('.item-card')
-        : null;
-      if (card) {
-        dragGhost = card.cloneNode(true);
+    function commitCardDrag(x, y) {
+      const press = dragPress;
+      if (!press || press.committed) return;
+      press.committed = true;
+      dragSource = { group: press.group, item: press.item };
+      draggingItem.value = press.item;
+      dropIndex.value = null;
+      dragOverGroup.value = press.group.id;
+      if (press.card) {
+        dragGhost = press.card.cloneNode(true);
         dragGhost.classList.add('drag-ghost');
-        dragGhost.style.width = card.offsetWidth + 'px';
+        dragGhost.style.width = press.card.offsetWidth + 'px';
         dragGhost.style.pointerEvents = 'none';
         document.body.appendChild(dragGhost);
-        moveGhost(event.clientX, event.clientY);
+        moveGhost(x, y);
       }
-
-      document.addEventListener('mousemove', onCardDragMove);
-      document.addEventListener('mouseup', endCardDrag);
     }
 
     function moveGhost(x, y) {
@@ -1689,14 +1708,23 @@ const cmsApp = createApp({
     }
 
     function onCardDragMove(event) {
+      if (!dragPress) return;
+      // A committed pointer just follows. A fresh touch press commits once the
+      // finger has moved far enough to be more than a tap.
+      if (!dragPress.committed) {
+        const dx = event.clientX - dragPress.x;
+        const dy = event.clientY - dragPress.y;
+        if (dx * dx + dy * dy < 25) return;
+        commitCardDrag(event.clientX, event.clientY);
+      }
       moveGhost(event.clientX, event.clientY);
       autoScrollDuringDrag(event);
       updateDropIndexFromPoint(event.clientX, event.clientY);
     }
 
     function endCardDrag(event) {
-      document.removeEventListener('mousemove', onCardDragMove);
-      document.removeEventListener('mouseup', endCardDrag);
+      detachDragListeners();
+      if (!dragPress) return;
       if (dragGhost) {
         dragGhost.remove();
         dragGhost = null;
@@ -1706,6 +1734,7 @@ const cmsApp = createApp({
         draggingItem.value = null;
         dropIndex.value = null;
         dragOverGroup.value = null;
+        dragPress = null;
         return;
       }
       const { group: srcGroup, item: srcItem } = dragSource;
@@ -1745,9 +1774,32 @@ const cmsApp = createApp({
       targetGroup.items.splice(insertIndex, 0, srcItem);
 
       dragSource = null;
+      dragPress = null;
       draggingItem.value = null;
       dropIndex.value = null;
       dragOverGroup.value = null;
+    }
+
+    // The system interrupts the gesture (a notification, a second finger):
+    // the card goes back where it started instead of landing wherever the
+    // finger happened to be.
+    function cancelCardDrag() {
+      detachDragListeners();
+      if (dragGhost) {
+        dragGhost.remove();
+        dragGhost = null;
+      }
+      dragSource = null;
+      dragPress = null;
+      draggingItem.value = null;
+      dropIndex.value = null;
+      dragOverGroup.value = null;
+    }
+
+    function detachDragListeners() {
+      document.removeEventListener('pointermove', onCardDragMove);
+      document.removeEventListener('pointerup', endCardDrag);
+      document.removeEventListener('pointercancel', cancelCardDrag);
     }
 
     function autoScrollDuringDrag(event) {

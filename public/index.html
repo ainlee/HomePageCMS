@@ -109,7 +109,7 @@
                    :class="{ 'drop-target': dropIndex && dropIndex.groupId === group.id && dropIndex.index === ii,
                              'is-dragging': draggingItem === item }">
                 <div class="item-row">
-                  <i class="mdi mdi-drag item-drag" @mousedown="startCardDrag($event, group, item)"></i>
+                  <i class="mdi mdi-drag item-drag" @pointerdown="startCardDrag($event, group, item)"></i>
                   <div class="item-icon-wrap">
                     <i v-if="item.iconType === 'mdi' && item.icon" class="mdi item-icon" :class="item.icon"></i>
                     <img v-else-if="item.icon" :src="item.icon" class="item-icon-img" @error="item.icon = ''">
@@ -171,7 +171,7 @@
                    :class="{ 'drop-target': dropIndex && dropIndex.groupId === group.id && dropIndex.index === ii,
                              'is-dragging': draggingItem === item }">
                   <div class="item-row">
-                    <i class="mdi mdi-drag item-drag" @mousedown="startCardDrag($event, group, item)"></i>
+                    <i class="mdi mdi-drag item-drag" @pointerdown="startCardDrag($event, group, item)"></i>
                     <div class="item-icon-wrap">
                       <i v-if="item.icon" class="mdi item-icon" :class="item.icon"></i>
                       <span v-else class="bookmark-abbr">{{ item.abbr }}</span>
