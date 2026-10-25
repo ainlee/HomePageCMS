@@ -1457,6 +1457,28 @@ body {
   }
 }
 
+
+/* Upgrade button with a breathing glow */
+.upgrade-btn {
+  position: relative;
+}
+.upgrade-btn.upgrade-available {
+  color: var(--accent);
+  animation: upgrade-breathe 2.4s ease-in-out infinite;
+}
+.upgrade-btn.upgrade-available:disabled {
+  opacity: 1;
+}
+@keyframes upgrade-breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 12px 3px color-mix(in srgb, var(--accent) 45%, transparent);
+    opacity: 0.85;
+  }
+}
 /* Responsive: mobile landscape */
 @media (min-width: 769px) and (max-width: 1024px) {
   .preview-panel {

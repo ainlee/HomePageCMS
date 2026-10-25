@@ -151,29 +151,23 @@ check('desktop: dragging the divider reopens a collapsed preview',
   !d2.collapsed && d2.preview.w > 100,
   `collapsed=${d2.collapsed} preview.w=${d2.preview.w}px`);
 
-// 5) hide/show preview from the topbar must still give the editor the full width
-// The topbar button is found by its eye icon, not by position: adding a button there
-// (the runtime settings gear) must not change which control this exercises. The button
-// carries no words any more, so the icon is what tells the two states apart.
-const topbarBtn = (icon) => `(() => {
-  const b = [...document.querySelectorAll('.topbar-right .btn')].find(x => x.querySelector('.mdi-${icon}'));
-  if (b) b.click();
-  return !!b;
-})()`;
-await evalJson(cdp, sessionId, topbarBtn('eye-off'));
-await sleep(450);
-const h1 = await geom();
-check('desktop: hiding the preview gives the editor full width',
-  // v-show keeps the nodes mounted, so hidden panels measure 0 wide rather than disappearing.
-  h1.preview.w === 0 && h1.resizer.w === 0 && h1.editor.w >= h1.main.w - 2,
-  `editor.w=${h1.editor.w} main.w=${h1.main.w} preview.w=${h1.preview.w} resizer.w=${h1.resizer.w}`);
-
-await evalJson(cdp, sessionId, topbarBtn('eye'));
-await sleep(450);
-const h2 = await geom();
-check('desktop: showing the preview again restores the split',
-  h2.preview.w > 100 && h2.editor.w < h2.main.w,
-  `editor.w=${h2.editor.w} preview.w=${h2.preview.w}`);
+// 5) the topbar no longer offers a hide/show preview toggle: the eye button was removed
+// in favour of the upgrade check, so the preview is only ever folded, never hidden.
+// The fold is exercised above; here we confirm the toggle really is gone from the bar.
+const hasEyeToggle = await evalJson(cdp, sessionId, `(() => {
+  return [...document.querySelectorAll('.topbar-right .btn')].some(b =>
+    !!b.querySelector('.mdi-eye-off') || !!b.querySelector('.mdi-eye'));
+})()`);
+check('the topbar no longer has a hide/show preview toggle', hasEyeToggle === false);
+// A disabled upgrade button with an icon and a tooltip takes the old spot.
+const upgradeBtn = await evalJson(cdp, sessionId, `(() => {
+  const b = document.querySelector('.upgrade-btn');
+  if (!b) return null;
+  return { icon: !!b.querySelector('.mdi'), disabled: b.disabled };
+})()`);
+check('the upgrade button takes the preview-toggle spot',
+  upgradeBtn !== null && upgradeBtn.icon === true && upgradeBtn.disabled === true,
+  JSON.stringify(upgradeBtn));
 
 // ---------------- Mobile / row split ----------------
 await setViewport(390, 844, true);

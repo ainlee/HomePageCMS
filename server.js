@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 const crypto = require('crypto');
+const { execFile, spawn } = require('child_process');
 const i18n = require('./lib/i18n');
 const themeLib = require('./lib/themes');
 const appearanceLib = require('./lib/homepage-appearance');
@@ -85,6 +86,10 @@ const ENV_LOCALES_PATH = (process.env.HOMEPAGE_CMS_LOCALES_PATH || '').trim();
 const ENV_THEMES_PATH = (process.env.HOMEPAGE_CMS_THEMES_PATH || '').trim();
 const ENV_LOCALE = (process.env.HOMEPAGE_CMS_LOCALE || '').trim();
 const REVALIDATE_URL = (process.env.HOMEPAGE_CMS_REVALIDATE_URL || '').trim();
+// The updater sidecar, when deployed as a separate container (the docker
+// layout). When set, the upgrade API forwards to it instead of pulling this
+// checkout: the sidecar owns the git repo and the published snapshots.
+const UPDATE_PROXY = (process.env.HOMEPAGE_CMS_UPDATE_PROXY || '').trim();
 // Mount prefix for the editor ('/cms'); '' means the root. Leading slash, no trailing.
 const RAW_BASE = (process.env.HOMEPAGE_CMS_BASE_PATH || '').trim();
 const BASE_PATH = RAW_BASE ? '/' + RAW_BASE.replace(/^\/+/, '').replace(/\/+$/, '') : '';
@@ -1174,6 +1179,85 @@ appRouter.get('/api/backups', (req, res) => {
   }
 });
 
+
+
+// A snapshot is a commit: when GitHub HEAD differs from this checkout an update is
+// available. Both answers are null when git is missing (e.g. a Docker image) or the
+// remote is unreachable, and the button stays locked in that case.
+function gitSha(args) {
+  return new Promise((resolve) => {
+    execFile('git', args, { cwd: PROJECT_DIR, timeout: 20000 }, (err, stdout) => {
+      if (err) return resolve(null);
+      const m = String(stdout).match(/[0-9a-f]{40}/);
+      resolve(m ? m[0] : null);
+    });
+  });
+}
+
+// GET /api/check-upgrade - is the GitHub snapshot ahead of this checkout?
+appRouter.get('/api/check-upgrade', async (req, res) => {
+  try {
+    if (UPDATE_PROXY) {
+      // Docker layout: the app container has no git checkout; the updater
+      // sidecar owns the repo and answers with its own snapshot comparison.
+      const r = await fetch(UPDATE_PROXY + '/api/update/status', { signal: AbortSignal.timeout(45000) });
+      const data = await r.json();
+      res.json({ success: true, data: { hasUpdate: !!data.hasUpdate, offline: data.offline === true, env: 'docker' } });
+      return;
+    }
+    const local = await gitSha(['rev-parse', 'HEAD']);
+    const remote = await gitSha(['ls-remote', 'origin', 'HEAD']);
+    if (!local || !remote) {
+      // No git checkout, or the remote is unreachable: keep the button locked -
+      // a false positive would only waste a click.
+      return res.json({ success: true, data: { hasUpdate: false, offline: true } });
+    }
+    const hasUpdate = local !== remote;
+    res.json({ success: true, data: { hasUpdate, local, remote } });
+  } catch (err) {
+    res.json({ success: true, data: { hasUpdate: false, offline: true, error: err.message } });
+  }
+});
+
+// POST /api/upgrade - pull the new snapshot and its dependencies. The browser
+// reloads afterwards, so the served page and any new front-end code run at once.
+appRouter.post('/api/upgrade', (req, res) => {
+  if (UPDATE_PROXY) {
+    // Docker layout: ask the sidecar to pull, publish a snapshot, and restart
+    // the app container. Its answer only comes back once the new snapshot is
+    // in place, so the front-end reload finds the new code already running.
+    fetch(UPDATE_PROXY + '/api/update/pull', { method: 'POST', signal: AbortSignal.timeout(600000) })
+      .then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        res.status(r.ok ? 200 : 500).json(body.success ? body : { success: false, error: body.error || '升級失敗: sidecar 回應不正確' });
+      })
+      .catch((e) => res.status(500).json({ success: false, error: '升級失敗: ' + (e.message || String(e)) }));
+    return;
+  }
+  execFile('git', ['pull', '--ff-only'], { cwd: PROJECT_DIR, timeout: 60000 }, (err, stdout, stderr) => {
+    if (err || /fatal|error/i.test(String(stderr || ''))) {
+      const detail = String(stderr || (err && err.message) || '').trim();
+      return res.status(500).json({ success: false, error: '升級失敗: ' + detail });
+    }
+    execFile('npm', ['install'], { cwd: PROJECT_DIR, timeout: 180000, shell: process.platform === 'win32' }, (err2) => {
+      if (err2) {
+        return res.status(500).json({ success: false, error: '依賴安裝失敗: ' + err2.message });
+      }
+      // The reply goes out first so the click feels instant. Then launch the
+      // fresh process - it backs off until this one frees the port - and exit.
+      // 500ms is enough for the response to flush; the caller waits its own 3s
+      // before reloading, by which time the new instance is serving.
+      const child = spawn(process.execPath, [path.join(PROJECT_DIR, 'server.js')], {
+        cwd: PROJECT_DIR,
+        env: process.env,
+        detached: true,
+        stdio: ['ignore', 'inherit', 'inherit']
+      });
+      child.unref();
+      setTimeout(() => { if (httpServer) httpServer.close(); process.exit(0); }, 500);
+    });
+  });
+});
 // POST /api/restore - restore from backup
 appRouter.post('/api/restore', (req, res) => {
   try {
@@ -1214,17 +1298,31 @@ if (BASE_PATH) {
   });
 }
 app.use(BASE_PATH || '/', appRouter);
-app.listen(Number(EFFECTIVE_PORT), EFFECTIVE_BIND, () => {
-  const preview = previewUrlSetting();
-  // The version is in the line on purpose: when two instances are running, this is
-  // how you tell which one has the current code.
-  console.log(`Homepage Editor v${pkg.version} running at http://localhost:${EFFECTIVE_PORT}`);
-  console.log(`Listening on: ${EFFECTIVE_BIND}`);
-  console.log(`Config path: ${configDirSetting().value}`);
-  console.log(`Backup path: ${backupDirSetting().value}`);
-  console.log(`Settings file: ${settingsFilePath()}`);
-  console.log(`Preview target: ${preview.value || '(not set)'} (${preview.source})`);
-  if (!settingsExist()) {
-    console.log('No editor settings found yet - the setup dialog opens on the first visit.');
-  }
-});
+// EADDRINUSE retry: after an in-place upgrade the new instance starts while
+// this one still holds the port, so it backs off a few times instead of dying.
+let httpServer;
+function startServer(attempts) {
+  const server = app.listen(Number(EFFECTIVE_PORT), EFFECTIVE_BIND, () => {
+    const preview = previewUrlSetting();
+    // The version is in the line on purpose: when two instances are running, this is
+    // how you tell which one has the current code.
+    console.log(`Homepage Editor v${pkg.version} running at http://localhost:${EFFECTIVE_PORT}`);
+    console.log(`Listening on: ${EFFECTIVE_BIND}`);
+    console.log(`Config path: ${configDirSetting().value}`);
+    console.log(`Backup path: ${backupDirSetting().value}`);
+    console.log(`Settings file: ${settingsFilePath()}`);
+    console.log(`Preview target: ${preview.value || '(not set)'} (${preview.source})`);
+    if (!settingsExist()) {
+      console.log('No editor settings found yet - the setup dialog opens on the first visit.');
+    }
+  });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' && attempts > 1) {
+      setTimeout(() => startServer(attempts - 1), 1000);
+    } else {
+      throw err;
+    }
+  });
+  httpServer = server;
+}
+startServer(6);

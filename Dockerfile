@@ -30,10 +30,17 @@ USER node
 ENV NODE_ENV=production
 EXPOSE 3456
 
+# The living layout runs the code from a mounted release
+# (./updates/releases/current -> /app) that the updater sidecar publishes.
+# Before that first publish, /app is empty; the entry point waits instead of
+# crashing, so the container shows "waiting" rather than a restart storm.
+# With a baked image /app/server.js exists at start and the loop never fires.
+COPY entrypoint.sh /entrypoint.sh
+
 # Ask the editor itself for /api/auth. When the editor is mounted under a base
 # path, that path is part of the URL, so it is read from the environment instead
 # of being hardcoded here.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD ["node", "-e", "const p=(process.env.HOMEPAGE_CMS_BASE_PATH||'');fetch('http://127.0.0.1:'+(process.env.PORT||'3456')+p+'/api/auth').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
-CMD ["node", "server.js"]
+CMD ["/entrypoint.sh"]

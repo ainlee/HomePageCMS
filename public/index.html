@@ -34,8 +34,8 @@
         <button @click="openSettings" class="btn btn-icon btn-secondary settings-btn" :title="t('topbar.settings')">
           <i class="mdi mdi-cog"></i>
         </button>
-        <button @click="togglePreview" class="btn btn-icon btn-secondary preview-toggle-btn" :title="showPreview ? t('topbar.hidePreview') : t('topbar.showPreview')">
-          <i class="mdi" :class="showPreview ? 'mdi-eye-off' : 'mdi-eye'"></i>
+        <button @click="checkAndUpgrade" class="btn btn-icon btn-secondary upgrade-btn" :title="upgradeOffline ? t('error.noInternetConnection') : t('topbar.checkUpgrade')" :class="{ 'upgrade-available': hasUpdate }" :disabled="!hasUpdate">
+          <i class="mdi mdi-update"></i>
         </button>
         <button @click="loadBackups" class="btn btn-secondary btn-backups" :title="t('topbar.backups')">
           <i class="mdi mdi-history"></i> <span class="btn-label">{{ t('topbar.backups') }}</span>

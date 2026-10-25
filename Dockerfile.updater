@@ -1,0 +1,14 @@
+# The updater sidecar image. It carries only this one dependency-free script:
+# a persistent git clone plus the published snapshots live on the host, so
+# this image is effectively immutable - upgrades never rebuild it.
+FROM node:22-alpine
+
+RUN apk add --no-cache git
+
+WORKDIR /app
+COPY server/updater.cjs ./
+
+ENV UPDATE_PORT=8788
+EXPOSE 8788
+
+CMD ["node", "updater.cjs"]

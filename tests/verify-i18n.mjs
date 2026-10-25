@@ -90,20 +90,21 @@ const rawKeys = async () => {
 const keysBefore = await rawKeys();
 check('no untranslated keys are on screen', keysBefore.length === 0, JSON.stringify(keysBefore));
 
-// The preview toggle is an icon: the eye says what it does, so the button needs no
-// words. The tooltip carries the name for the hover.
-const toggleInfo = await ev(`(() => {
-  const button = document.querySelector('.preview-toggle-btn');
+// The upgrade button is an icon: when no update is available it sits disabled, and the
+// tooltip carries the name for the hover.
+const upgradeInfo = await ev(`(() => {
+  const button = document.querySelector('.upgrade-btn');
   if (!button) return 'no button';
   return JSON.stringify({
     text: button.textContent.trim(),
     title: button.getAttribute('title') || '',
-    icon: !!button.querySelector('.mdi')
+    icon: !!button.querySelector('.mdi'),
+    disabled: button.disabled
   });
 })()`);
-const toggle = JSON.parse(toggleInfo);
-check('the preview toggle is an icon with a tooltip',
-  toggle.text === '' && toggle.icon && toggle.title.length > 0, toggleInfo);
+const upgrade = JSON.parse(upgradeInfo);
+check('the upgrade button is a disabled icon with a tooltip',
+  upgrade.text === '' && upgrade.icon && upgrade.title.length > 0 && upgrade.disabled === true, upgradeInfo);
 
 // Every button in the top bar is the same height, the language one included, and the
 // icon buttons are the same width.

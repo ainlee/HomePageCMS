@@ -9,6 +9,17 @@
 #
 # Before you start: make sure the Homepage config directory you mount at /app/config
 # has a cms/ subdirectory for the editor's own data, e.g. /path/to/homepage/cms/.
+
+# Two layouts:
+# 1. BAKED (updater commented out): the code is baked into the image; upgrades
+#    happen by rebuilding the image on the host (git pull + docker build). The
+#    in-page upgrade button stays locked in this layout.
+# 2. LIVING (updater active, below): the app container runs code from the
+#    ./updates/releases/current volume; a sidecar keeps a git clone in
+#    ./updates/repo and publishes new snapshots on demand, so the editor's
+#    upgrade button works inside the docker deployment too. Data (repo and
+#    releases) lives next to this compose file - on RGM-88X that is
+#    /media/ain/DISK1-SSD/projects/homepage-cms/updates/.
 services:
   homepage-cms:
     # Local build; tag it with the git short SHA so running instances are tellable
@@ -18,6 +29,14 @@ services:
     image: homepage-cms:latest
     container_name: homepage-cms
     restart: unless-stopped
+    # LIVING layout: the code runs from the published snapshot, not from the
+    # image. The image only provides the node runtime; the volume is created
+    # by the updater on first boot, so the container may need one or two
+    # restarts before the first release exists.
+    # BAKED layout: remove this volume and the HOMEPAGE_CMS_UPDATE_PROXY
+    # variable, and comment out the updater service below.
+    # volumes:
+    #   - ./updates/releases/current:/app:ro
     # Pick a free host port that does not collide with a standalone editor running
     # on the machine (3899 in the single-machine layout). LAN-only; the public
     # URL goes through your tunnel.
@@ -46,6 +65,8 @@ services:
       # Access protection: do not put a password in this file. Enable it in the
       # editor's settings dialog instead; the salted hash is stored in the cms/
       # settings file, which survives container recreation.
+      # LIVING layout only: forward the upgrade API to the sidecar.
+      # HOMEPAGE_CMS_UPDATE_PROXY: 'http://homepage-cms-updater:8788'
     volumes:
       # The Homepage config directory: the editor reads/writes services.yaml,
       # bookmarks.yaml, settings.yaml and custom.css there.
@@ -53,6 +74,51 @@ services:
       # The cms/ subdirectory of that same path: the editor's own settings file
       # and its backups.
       - HOMEPAGE_CONFIG_DIR/cms:/app/cms
+
+  # The updater sidecar: owns the git clone (./updates/repo) and publishes
+  # runnable snapshots (./updates/releases). Rebuilt never - it has no code
+  # of its own beyond one dependency-free script.
+  homepage-cms-updater:
+    build: {context: ., dockerfile: Dockerfile.updater}
+    image: homepage-cms-updater:latest
+    container_name: homepage-cms-updater
+    restart: unless-stopped
+    # init reaps the git/npm child processes; without it, failed fetches
+    # leak zombies into PID 1 until the container stops answering.
+    init: true
+    # Not published: the app container reaches it over the compose network
+    # (HOMEPAGE_CMS_UPDATE_PROXY), and only through that.
+    expose:
+      - '8788'
+    environment:
+      # Where the sidecar clones from. Private repos need a token; it is
+      # stored in the environment, never in the editor.
+      UPDATE_REPO_URL: 'https://github.com/ainlee/HomePageCMS.git'
+      UPDATE_BRANCH: 'main'
+      UPDATE_REPO_DIR: '/srv/update/repo'
+      UPDATE_RELEASES_DIR: '/srv/update/releases'
+      UPDATE_KEEP_RELEASES: '3'
+      # The container the sidecar restarts after publishing a new snapshot.
+      # Leave empty to only publish and restart manually.
+      UPDATE_APP_CONTAINER: 'homepage-cms'
+      UPDATE_DOCKER_SOCK: '/var/run/docker.sock'
+      TZ: 'Asia/Taipei'
+    volumes:
+      # The persistent clone. Lives next to this compose file, so on
+      # RGM-88X it is /media/ain/DISK1-SSD/projects/homepage-cms/updates/repo.
+      - ./updates/repo:/srv/update/repo
+      # The published snapshots the app container mounts.
+      - ./updates/releases:/srv/update/releases
+      # Restarting the app container needs the daemon socket, read-only.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      # /healthz is pure liveness; /api/update/status really fetches git, so it
+      # must not be what the healthcheck hits every 30 seconds.
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8788/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 # Variant - put the editor in the SAME compose file as Homepage (one stack):
 # the ONLY change is HOMEPAGE_CMS_REVALIDATE_URL, which then points at the

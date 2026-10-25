@@ -956,6 +956,7 @@ const cmsApp = createApp({
       loadSettings();
       loadServices();
       loadBookmarks();
+      checkForUpdates();
     }
 
     // The password is checked before anything else is loaded. Otherwise every request
@@ -1865,9 +1866,56 @@ const cmsApp = createApp({
       } catch (err) {
       }
     }
-    function togglePreview() { showPreview.value = !showPreview.value; saveLayout(); }
     function refreshPreview() { previewKey.value++; }
     function togglePreviewCollapsed() { previewCollapsed.value = !previewCollapsed.value; saveLayout(); }
+
+         // ---- Upgrade check ----
+    const hasUpdate = ref(false);
+    const upgradeLoading = ref(false);
+    const upgradeOffline = ref(false);
+    // docker when the answer came from the updater sidecar: the app
+    // container restarts after the reply, so the reload needs to wait
+    // longer than in the local, in-process case.
+    const upgradeEnv = ref('local');
+
+    async function checkForUpdates() {
+      try {
+        const res = await apiFetch('/api/check-upgrade');
+        const json = await res.json();
+        if (json.success) {
+          upgradeOffline.value = !!json.data.offline;
+          hasUpdate.value = !!(json.data && json.data.hasUpdate);
+          upgradeEnv.value = json.data && json.data.env === 'docker' ? 'docker' : 'local';
+        }
+      } catch (err) {
+        console.warn('[upgrade] check failed:', err.message);
+      }
+    }
+
+    async function checkAndUpgrade() {
+      if (!hasUpdate.value || upgradeLoading.value) return;
+      upgradeLoading.value = true;
+      try {
+        const res = await apiFetch('/api/upgrade', { method: 'POST' });
+        const json = await res.json();
+        if (json.success) {
+          showToast(t('toast.upgradeSuccess'));
+          hasUpdate.value = false;
+          const waitMs = upgradeEnv.value === 'docker' ? 12000 : 3000;
+          // Local: the new server instance backs off until the old one frees
+          // the port. Docker: the sidecar restarts the app container after
+          // the answer, so the reload has to outlast that.
+          setTimeout(() => location.reload(), waitMs);
+        } else {
+          // The server already answered in the editor's language.
+          showToast(json.error || t('toast.unknownError'), 'error');
+        }
+      } catch (err) {
+        showToast(t('toast.unknownError'), 'error');
+      } finally {
+        upgradeLoading.value = false;
+      }
+    }
 
     // Runtime settings
     async function loadSettings() {
@@ -1959,6 +2007,7 @@ const cmsApp = createApp({
         // The config directory may have changed, so the services are read again.
         loadServices();
         loadBookmarks();
+        checkForUpdates();
       } catch (err) {
         showToast(t('toast.settingsSaveFailed', { msg: err.message }), 'error');
       }
@@ -2052,6 +2101,7 @@ const cmsApp = createApp({
         loadSettings();
         loadServices();
         loadBookmarks();
+        checkForUpdates();
       }
       // The colour schemes are needed for the appearance dialog and for knowing
       // which scheme is in use.
@@ -2108,7 +2158,10 @@ const cmsApp = createApp({
       addItem, editItem, saveItem, deleteItem,
       moveItemToGroup, confirmMove,
       startCardDrag, moveItemUp, moveItemDown,
-      togglePreview, togglePreviewCollapsed, refreshPreview, loadBackups, restoreBackup,
+      togglePreviewCollapsed, refreshPreview, loadBackups, restoreBackup,
+      hasUpdate, upgradeLoading, upgradeOffline, checkForUpdates, checkAndUpgrade,
+      upgradeEnv,
+      
       loadSettings, openSettings, saveSettings, skipSetup, submitPassword,
       initAuth, dismissPasswordPrompt, closeOnOverlayClick,
       previewCollapsed, isColumn, isResizing, splitRatio, startResize, onResize, stopResize,
