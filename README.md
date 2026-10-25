@@ -192,7 +192,7 @@ Homepage 官方提供的客製樣式檔。有一個坑要注意：**儀表板若
 編輯器有兩種跑法，而且**可以同時跑**：
 
 - **本地版**：跑在你自己的電腦上，透過網路讀寫 Homepage 的設定檔。沒有裝 Docker 就用這個。
-- **Docker 版**：把編輯器放進容器、跟 Homepage 並排，共用同一個設定資料夾。有兩種擺法（見下方 Docker 節）：**獨立 compose 檔（建議，兩邊升級各碰各的）**，或加進 Homepage 同一份 compose（省事，但兩邊綁在同一張 Dockge 卡片）。
+- **Docker 版**：把編輯器放進容器、跟 Homepage 並排，共用同一個設定資料夾。附帶更新器容器：GitHub 出新版時，按介面的升級鈕就能更新。可以獨立 compose 檔（建議），也可以加進 Homepage 同一份 compose（見下方 Docker 節）。
 
 兩種跑法改的是同一批 YAML 檔案，不需要搬資料。記一個原則就好：**看，兩邊都可以；存檔，一次只用一邊。** 如果兩邊真的同時存了同一份檔，後存的那邊會請你重新整理一次再存，不會蓋掉對方的東西。
 
@@ -202,44 +202,43 @@ Homepage 官方提供的客製樣式檔。有一個坑要注意：**儀表板若
 
 ### Docker 版
 
-先在跑 Homepage 的那台機器上備好映像。把程式碼放上去（clone 或複製都行），然後 build：
+兩個容器：**主程式** 與 **更新器**。主程式只提供執行環境，程式碼是更新器發布的「快照」——GitHub 出了新版，按頂欄的升級鈕就會自己更新，不需要手動重建映像。
+
+先準備映像（在跑 Homepage 的機器上做一次）：
 
 ```bash
 git clone https://github.com/ainlee/HomePageCMS.git
 cd HomePageCMS
-docker build -t homepage-cms:$(git rev-parse --short HEAD) .
+docker build -t homepage-cms:latest .
+docker build -f Dockerfile.updater -t homepage-cms-updater:latest .
 ```
 
-接下來兩種擺法。服務區塊（`homepage-cms:` 那段）就照 [compose.example.yml](compose.example.yml) 抄，差別只有兩件事：**放哪份 compose 檔**、**`HOMEPAGE_CMS_REVALIDATE_URL` 填什麼**。
+部署：
 
-#### 擺法 A：獨立 compose 檔（建議）
+1. 新資料夾建 `docker-compose.yml`，照 [compose.example.yml](compose.example.yml) 直接抄，填上：
+   - `HOMEPAGE_CONFIG_DIR`：Homepage 設定目錄的路徑（裡面要有 `cms/` 子資料夾放編輯器的設定與備份）
+   - `HOMEPAGE_CMS_REVALIDATE_URL`、`HOMEPAGE_PREVIEW_URL`：公開的儀表板網址
+   - `ports`：對外的埠
+2. `docker compose up -d`。首次啟動時更新器會複製程式碼、發布第一份快照（幾分鐘），完成後自動重啟主容器；主容器若卡在「等待」，等自動重啟或手動 `docker restart homepage-cms` 即可。
+3. 完成。往後 GitHub 一出新版，頂欄的升級鈕（雲端同步圖示）就會亮起呼吸燈，按一下即完成更新：更新器拉新碼、發布新快照、重啟主容器、頁面自動重刷。
 
-編輯器有自己一份 `docker-compose.yml`，Homepage 也是自己一份。以後 Homepage 升級只碰他的檔、我們升級只碰我們的檔，互不影響。
+東西放哪（全在 compose 檔同一層，方便管理）：
 
-1. 在新資料夾建一份 `docker-compose.yml`，把 `homepage-cms` 服務區塊貼進去
-2. 填上你自己機器的值：
-   - `image`：剛 build 出來的 tag（例如 `homepage-cms:287b626`）
-   - `ports`：容器對外的 host 埠，別跟機器上別的東西撞
-   - `volumes`：Homepage 的設定目錄路徑；並在這個目錄下建一個空的 `cms/` 資料夾（放編輯器的設定檔與備份）
-   - `HOMEPAGE_CMS_REVALIDATE_URL`：**公開的儀表板網址**（例如 `https://home.example.com`）。兩邊是兩個獨立 stack、網路是分開的，存檔後通知 Homepage 重讀只能走公開網址
-   - `HOMEPAGE_PREVIEW_URL`：同一個公開網址（右側預覽用）
-3. 啟動：`docker compose up -d`
+```
+<compose 檔所在資料夾>/
+├── updates/repo       ← 更新器的 git 複製
+└── updates/releases   ← 發布的快照（保留最近 3 份）
+```
 
-以後升級編輯器：程式碼換新版、重新 build 新 tag、把 `image` 那行改成新 tag、再 `docker compose up -d`——只有編輯器重啟，Homepage 完全不動。
+Homepage 的設定與備份完全不受影響，升級也不會碰到它們。
 
-#### 擺法 B：同一份 compose 檔（省事）
+**變體**：編輯器跟 Homepage 在**同一份** compose（同一張 docker 網路）時，把兩支服務放進那份檔、`HOMEPAGE_CMS_REVALIDATE_URL` 改填服務名 `http://homepage:3000`（同網路直接連、比公開網址快）。代價是兩支服務綁在同一張 Dockge 卡片。
 
-把 `homepage-cms` 服務區塊直接加進 Homepage 現有的 `docker-compose.yml`，兩支服務綁在同一個 stack 裡。
+**不想要升級鈕**：刪掉 `homepage-cms-updater` 服務、`HOMEPAGE_CMS_UPDATE_PROXY` 那行，與主服務的 `./updates/releases:/app:ro` 掛載，改回把程式碼燒進映像（build 時照舊用短 SHA 當 tag），升級就得手動重建映像。
 
-1. 服務區塊一樣照抄、貼進 Homepage 的 compose 檔
-2. 只有一處不同：`HOMEPAGE_CMS_REVALIDATE_URL` 填**服務名** `http://homepage:3000`（`3000` 是 Homepage 容器**內部**的埠，就是他 `ports` 那行 `3800:3000` 冒號右邊的那個數字）。同一張 docker 網路直接連得到，比走公開網址還快
-3. `docker compose up -d`
+#### 對外（走 tunnel 才需要）
 
-代價：這份檔變成兩邊共用。之後任何人改它（Homepage 升級、我們加變數）都會讓 Dockge 把整張卡片標成待更新，按「更新」前會連另一支服務一起重做。介意的話用擺法 A。
-
-#### 最後一步：對外（走 tunnel 才需要）
-
-在 tunnel（例如 Cloudflare）上、Homepage 那個網域加一條 `/cms` 的 path 規則，指到編輯器的 host 埠，**路徑原樣保留、不要剝掉**——編輯器自己知道它掛在 `/cms` 底下。開 `https://你的網域/cms/` 就是編輯器，根路徑照舊是 Homepage。
+tunnel 上在 Homepage 的網域加一條 `/cms` 的 path 規則，指到編輯器的 host 埠，**路徑原樣保留、不要剝掉**——編輯器自己知道它掛在 `/cms` 底下。`https://你的網域/cms/` 就是編輯器，根路徑照舊是 Homepage。
 
 ### 兩種跑法各在哪
 
@@ -252,7 +251,7 @@ docker build -t homepage-cms:$(git rev-parse --short HEAD) .
 
 ### 進階：可以調的東西
 
-都藏在 compose 的環境變數裡：`HOMEPAGE_CMS_BASE_PATH`（編輯器掛在哪個子路徑，例如 `/cms`）、`HOMEPAGE_CMS_REVALIDATE_URL`（存檔後通知 Homepage 重讀的地址：**獨立 stack** 填公開的儀表板網址，**同 stack** 填 `http://homepage:3000` 最穩）、`HOST`（容器內固定 `0.0.0.0`）。
+都藏在 compose 的環境變數裡：`HOMEPAGE_CMS_BASE_PATH`（編輯器掛在哪個子路徑，例如 `/cms`）、`HOMEPAGE_CMS_REVALIDATE_URL`（存檔後通知 Homepage 重讀的地址：**獨立 stack** 填公開的儀表板網址，**同 stack** 填 `http://homepage:3000` 最穩）、`HOST`（容器內固定 `0.0.0.0`）。 Docker 雙容器佈署裡還有一個 `HOMEPAGE_CMS_UPDATE_PROXY`：升級鈕的轉發地址，指向更新器服務；不設它按鈕就保持鎖定。
 
 ### 存取保護
 
