@@ -1,278 +1,178 @@
 # HomePageCMS
 
-Homepage 的 YAML 設定後台：左側編輯、右側即時預覽，存檔前自動備份。
+Homepage 的設定編輯器：把 Homepage 的服務、書籤與儀表板外觀變成看得到、填得出的表單。左邊改、右邊即時預覽，每次存檔前自動備份一份，改錯也不怕。
 
 ![編輯器畫面](docs/screenshot.png)
 
-## 功能
+## 功能總覽
 
-- **雙欄編輯 + 即時預覽** — 右側直接載入你的 Homepage，改完立刻看到效果。
-- **可拖曳的分割線、可折疊的預覽** — 拖曳調整比例；折疊後分割線會移動，空間真的
-  還給編輯區。
-- **服務與書籤分頁** — 分組、拖曳排序、跨分組移動、col-span；狀態小工具支援
-  Docker 容器、ICMP Ping 與 HTTP API，同一服務可掛多個小工具，也可指定 Docker
-  主機、排序權重與 Kubernetes 目標。
-- **書籤欄位完整** — 對話框同時管理名稱、連結、縮寫、說明與圖示；說明留空時
-  Homepage 顯示連結主機名稱。
-- **首頁外觀分頁** — 儀表板的視覺欄位（主題、配色、背景圖與濾鏡、卡片、區塊、
-  圖示樣式與字型）變成表單，存檔後預覽立刻更新；內建 23 條色階並顯示色票，
-  每條配色可從種子色各自客製化，寫進 `custom.css` 的獨立區塊互不影響。
-- **後端過舊偵測** — 更新編輯器後忘了重新啟動時，介面會提示後端比頁面舊，
-  不再出現看不懂的解析錯誤。
-- **自動備份與還原** — 每次存檔留一份時間戳快照，介面裡就能還原。
-- **存檔不傷原檔** — 只覆寫你改過的欄位，編輯器不認得的欄位原樣保留。
-- **多語系** — 內建繁中、簡中、日文、英文；也可以自己加語言檔。
-- **配色方案** — 內建七套深淺色配色，可自訂、儲存、匯出匯入。
-- **可選的存取保護** — 一道共用密碼鎖住編輯器，密碼以 salt + scrypt 雜湊儲存。
-- **行動版可用** — 版面依實測可見範圍計算，手機上底部內容不會掉出畫面。
+- 雙欄介面：左側表單編輯，右側直接載入你的 Homepage 即時預覽；中間分割線可拖曳、預覽可折疊。
+- 服務與書籤編輯：分組管理、拖曳排序、跨分組移動；服務可掛狀態小工具（Docker 容器、ICMP Ping、HTTP API），也能指定 Docker 主機、排序權重與 Kubernetes 目標。
+- 首頁外觀：主題、配色、背景圖與濾鏡、卡片與區塊樣式、字型全部表單化；內建 23 條色階，每條可從種子色各自調色。
+- 自動備份與還原：每次存檔留一份時間戳快照，介面裡一個按鈕還原。
+- 存檔不傷原檔：只寫回你改過的欄位，YAML 裡其他欄位原樣保留。
+- 多語系與配色：內建繁中、簡中、日文、英文與七套配色，都可以自己加。
+- 存取保護：一道共用密碼鎖住整個編輯器。
+- 一鍵升級：有新版時頂欄升級鈕亮起，按一下就更新完成。
 
-## 開始使用
+## 部署
 
-需求：Node.js 18 以上。
-
-```bash
-npm install
-npm start
-```
-
-開啟 <http://localhost:3456>。第一次開啟會跳出設定視窗，把 Homepage 網址填進去
-就好；留空的欄位使用預設值。
-
-Windows 也可以直接執行 `start-editor.bat`：它以 `0.0.0.0:3899` 啟動（方便區網內的
-裝置連進來），等伺服器準備好後自動開啟瀏覽器。
-
-## 使用
-
-| 想做的事 | 怎麼做 |
-| --- | --- |
-| 改服務或書籤 | 左側改，右側預覽同步更新，按「儲存」才寫檔 |
-| 還原舊設定 | 頂端工具列的「備份」→ 挑一個快照還原 |
-| 換語言 | 頂端工具列的語言圖示，點選即換 |
-| 換配色 | 頂端工具列的調色盤圖示，或設定視窗的「外觀」 |
-| 改儀表板外觀 | 「首頁外觀」分頁設定主題、配色、背景、字型等，按「儲存」即寫入並重新預覽 |
-| 顯示／隱藏預覽 | 頂端工具列的眼睛圖示 |
-| 改路徑、位址、密碼 | 頂端工具列的齒輪 |
-
-## 設定
-
-執行期設定由環境變數或編輯器設定檔（`cms-settings.yaml`）決定，預設值都相對於
-專案目錄，clone 下來就能直接跑。
-
-| 環境變數 | 預設值 | 說明 |
-| --- | --- | --- |
-| `PORT` | `3456` | 編輯器的連接埠 |
-| `HOST` | `127.0.0.1` | 編輯器綁定的位址；也可在介面上設定 |
-| `HOMEPAGE_CONFIG_PATH` | `<專案>/config` | Homepage 設定檔（`services.yaml`、`bookmarks.yaml`）所在目錄 |
-| `HOMEPAGE_BACKUP_PATH` | `<專案>/backups` | 備份目錄 |
-| `HOMEPAGE_CMS_SETTINGS` | `<專案>/cms-settings.yaml` | 編輯器自身的設定檔 |
-| `HOMEPAGE_PREVIEW_URL` | 無 | 預覽目標網址；未設定時需於介面設定 |
-| `HOMEPAGE_CMS_PASSWORD` | 無 | 存取密碼；設定後所有寫入 API 都需要它 |
-| `HOMEPAGE_CMS_LOCALES_PATH` | `<專案>/locales` | 語系檔目錄 |
-| `HOMEPAGE_CMS_THEMES_PATH` | `<專案>/themes` | 配色方案目錄 |
-
-同一組設定也能在介面的齒輪按鈕裡改，寫進 `cms-settings.yaml`。兩種來源的優先序
-不同：**路徑與連接埠**是環境變數優先（部署通常就是用環境變數掛載目錄，介面不該
-蓋掉它）；**訪問網址與監聽位址**是設定檔優先（介面上填代表使用者明確選過）。每個
-欄位下方會顯示目前生效的值與來源。
-
-Windows 上把值寫在 `start-editor.local.bat`（不進版控）：
-
-```bat
-set "HOMEPAGE_CONFIG_PATH=\\nas\share\homepage"
-```
-
-### 自訂語言與配色
-
-語言檔在 `locales/`、配色檔在 `themes/`，都是 INI 格式。放一個檔案進去，介面就會
-多出對應的選項，不必改任何程式碼。
-
-語言檔：`[meta]` 放語言代碼與顯示名稱，其餘 section 放 `key = 文字`。缺少的翻譯會
-退回繁體中文。
-
-```ini
-[meta]
-code = zh-TW
-name = 繁體中文
-
-[topbar]
-title = Homepage 編輯器
-save = 儲存
-```
-
-配色檔：`[colors]` 的每個 key 都對應 `public/style.css` 裡的一個 CSS 變數（`bg` →
-`--bg`），少寫就套用不進去；`[options]` 目前是圓角與陰影。
-
-```ini
-[meta]
-id = midnight
-name = 深空
-builtin = true
-
-[colors]
-bg = #0f1117
-bg-card = #1a1d27
-text = #e4e6eb
-text-dim = #8b8fa3
-accent = #6c5ce7
-
-[options]
-radius = 8px
-shadow = 0 2px 8px rgba(0,0,0,0.3)
-```
-
-介面裡的「匯出」會把配色存成 INI 檔，「匯入」則相反——兩個方向的檔案格式相同。
-
-## 要注意的事
-
-- **綁 `0.0.0.0` 代表任何能連到這台機器的人都能改寫你的 Homepage 設定。** 預設只
-  綁 `127.0.0.1`；要讓區網內的裝置連進來才改成 `0.0.0.0`，或啟動時設
-  `HOST=0.0.0.0`。要對外開放請一併設定 `HOMEPAGE_CMS_PASSWORD`。
-- 監聽位址與連接埠在介面上改完要重新啟動才會生效，介面會標示出來。
-- 若設定檔在你編輯期間被其他程式改過，儲存會被拒絕並提示重新載入，避免蓋掉那些
-  變更。
-- 前端資產全部來自 npm 依賴並由伺服器提供，頁面不會向外部網域載入任何東西，沒有
-  外網的環境也能正常使用。
-- 編輯器自己的 HTML／JS／CSS 以不快取的方式提供。遇到空白頁或奇怪的錯誤，先按一次
-  Ctrl+F5 強制重新整理。
-- **更新編輯器後要重新啟動後端。** 正在執行的後端若比頁面舊，介面會提示重新啟動，
-  而不是空白頁或解析錯誤。
-
-### 自訂樣式與快取代理
-
-「首頁外觀」分頁的「自訂 CSS」寫進 Homepage 設定目錄的 `custom.css`，那是
-Homepage 官方提供的客製樣式檔。有一個坑要注意：**儀表板若放在快取代理（CDN）之後，
-`/api/config/custom.css` 會被快取數小時**，改完樣式看不到變化，看起來像功能壞掉。
-
-編輯器把 `custom.css` 拆成三段再組回去：字型區塊永遠在最前面（`@import` 只在樣式表
-的第一行才有效，寫在後面會被瀏覽器默默丟棄）、每個配色各自一個區塊、你自己寫的內容
-原樣保留。選了配色就編輯那個配色的區塊，各配色的客製化互不影響。
-
-字型可以填一個名稱（瀏覽器本機有的就用，沒有就自動退回），也可以再填一個來源網址，
-例如 Google Fonts 的連結——填了網址就會一併載入字型檔。Homepage 內建的字型
-（Manrope、IBM Plex Mono）優先級較高，下拉選了它們時自訂字型不會生效。
-
-來源網址填的是樣式表時（副檔名 `.css`），編輯器會讀取它、找出裡面的
-`@font-face` 家族名稱並填進名稱欄。填的是字型檔（`.woff2`、`.woff`、`.ttf`、
-`.otf`）時則改用 `@font-face` 規則匯入，名稱由使用者填寫。
-
-對應措施是在代理上讓這個路徑不快取。以 Cloudflare 為例，在 **Cache Rules** 加一條
-優先於既有通配規則的規則：
-
-| 比對 | 動作 |
-| --- | --- |
-| `http.request.uri.path eq "/api/config/custom.css"` | 不快取 |
-| （原有的通配規則） | 快取 |
-
-來源站台本身會送 `ETag`，不快取之後瀏覽器會用它重新驗證，沒改動就回 304、有改動
-就拿到新內容。改完樣式記得重新載入頁面；還是沒變化就按一次 Ctrl+F5。
-
-另有一點：Homepage 的 dashboard 資料會快取在伺服器行程的記憶體裡，只有
-`/api/revalidate` 會清除。編輯器存檔外觀後會自動呼叫它，所以預覽會立刻更新；若
-儀表板開啟了存取驗證而無法呼叫，編輯器會提示按儀表板頁腳的重新整理按鈕。
-
-## 設定檔格式
-
-服務設定沿用 Homepage 的 YAML 格式，編輯器讀寫的是同一份檔案，因此也能直接手改。
-欄位說明見 [Homepage 設定文件](https://gethomepage.dev/configs/services/)。
-
-視覺欄位（主題、配色、背景、字型等）寫在 `settings.yaml`，「首頁外觀」分頁就能改，
-不必離開編輯器；存檔前同樣自動備份。
-
-```yaml
-- 開發工具:
-    - code-server:
-        href: https://code.example.com
-        description: VS Code 網頁版
-        icon: mdi-microsoft-visual-studio-code
-        container: code-server
-```
-
-## 兩種跑法：本地版與 Docker 版
-
-編輯器有兩種跑法，而且**可以同時跑**：
-
-- **本地版**：跑在你自己的電腦上，透過網路讀寫 Homepage 的設定檔。沒有裝 Docker 就用這個。
-- **Docker 版**：把編輯器放進容器、跟 Homepage 並排，共用同一個設定資料夾。附帶更新器容器：GitHub 出新版時，按介面的升級鈕就能更新。可以獨立 compose 檔（建議），也可以加進 Homepage 同一份 compose（見下方 Docker 節）。
-
-兩種跑法改的是同一批 YAML 檔案，不需要搬資料。記一個原則就好：**看，兩邊都可以；存檔，一次只用一邊。** 如果兩邊真的同時存了同一份檔，後存的那邊會請你重新整理一次再存，不會蓋掉對方的東西。
-
-### 本地版
-
-見上方「開始使用」：`npm install` 後 `npm start`，Windows 也可以直接雙擊 `start-editor.bat`。
-
-### Docker 版
-
-兩個容器：**主程式** 與 **更新器**。主程式只提供執行環境，程式碼是更新器發布的「快照」——GitHub 出了新版，按頂欄的升級鈕就會自己更新，不需要手動重建映像。
-
-先準備映像（在跑 Homepage 的機器上做一次）：
-
-```bash
-git clone https://github.com/ainlee/HomePageCMS.git
-cd HomePageCMS
-docker build -t homepage-cms:latest .
-docker build -f Dockerfile.updater -t homepage-cms-updater:latest .
-```
-
-部署：
-
-1. 新資料夾建 `docker-compose.yml`，照 [compose.example.yml](compose.example.yml) 直接抄，填上：
-   - `HOMEPAGE_CONFIG_DIR`：Homepage 設定目錄的路徑（裡面要有 `cms/` 子資料夾放編輯器的設定與備份）
-   - `HOMEPAGE_CMS_REVALIDATE_URL`、`HOMEPAGE_PREVIEW_URL`：公開的儀表板網址
-   - `ports`：對外的埠
-2. `docker compose up -d`。首次啟動時更新器會複製程式碼、發布第一份快照（幾分鐘），完成後自動重啟主容器；主容器若卡在「等待」，等自動重啟或手動 `docker restart homepage-cms` 即可。
-3. 完成。往後 GitHub 一出新版，頂欄的升級鈕（雲端同步圖示）就會亮起呼吸燈，按一下即完成更新：更新器拉新碼、發布新快照、重啟主容器、頁面自動重刷。
-
-東西放哪（全在 compose 檔同一層，方便管理）：
-
-```
-<compose 檔所在資料夾>/
-├── updates/repo       ← 更新器的 git 複製
-└── updates/releases   ← 發布的快照（保留最近 3 份）
-```
-
-Homepage 的設定與備份完全不受影響，升級也不會碰到它們。
-
-**變體**：編輯器跟 Homepage 在**同一份** compose（同一張 docker 網路）時，把兩支服務放進那份檔、`HOMEPAGE_CMS_REVALIDATE_URL` 改填服務名 `http://homepage:3000`（同網路直接連、比公開網址快）。代價是兩支服務綁在同一張 Dockge 卡片。
-
-**不想要升級鈕**：刪掉 `homepage-cms-updater` 服務、`HOMEPAGE_CMS_UPDATE_PROXY` 那行，與主服務的 `./updates/releases:/app:ro` 掛載，改回把程式碼燒進映像（build 時照舊用短 SHA 當 tag），升級就得手動重建映像。
-
-#### 對外（走 tunnel 才需要）
-
-tunnel 上在 Homepage 的網域加一條 `/cms` 的 path 規則，指到編輯器的 host 埠，**路徑原樣保留、不要剝掉**——編輯器自己知道它掛在 `/cms` 底下。`https://你的網域/cms/` 就是編輯器，根路徑照舊是 Homepage。
-
-### 兩種跑法各在哪
+兩種跑法，改的是同一批設定檔，也可以同時跑。兩邊同時存同一份檔時，後存的一方會收到衝突提示，重新整理再存即可，不會蓋掉對方的東西。
 
 | | 本地版 | Docker 版 |
 | --- | --- | --- |
-| 怎麼起 | `npm start` | `docker compose up -d homepage-cms` |
-| 讀寫 Homepage 設定 | 走網路（NAS 共用資料夾） | 跟容器同一個資料夾，更快更穩 |
-| 編輯器自己的設定檔 | 專案資料夾的 `cms-settings.yaml` | 設定目錄下的 `cms/` |
-| 對外網址 | 看你自己的 tunnel 怎麼建 | Homepage 同網域的 `/cms` |
+| 需要什麼 | Node.js 18 以上 | Docker |
+| 怎麼跑 | `npm start` 或雙擊 `start-editor.bat` | `docker compose up -d` |
+| 適合誰 | 沒有 Docker、在自己的電腦上弄 | 放伺服器或 NAS 長期跑 |
 
-### 進階：可以調的東西
+### 本地版
 
-都藏在 compose 的環境變數裡：`HOMEPAGE_CMS_BASE_PATH`（編輯器掛在哪個子路徑，例如 `/cms`）、`HOMEPAGE_CMS_REVALIDATE_URL`（存檔後通知 Homepage 重讀的地址：**獨立 stack** 填公開的儀表板網址，**同 stack** 填 `http://homepage:3000` 最穩）、`HOST`（容器內固定 `0.0.0.0`）。 Docker 雙容器佈署裡還有一個 `HOMEPAGE_CMS_UPDATE_PROXY`：升級鈕的轉發地址，指向更新器服務；不設它按鈕就保持鎖定。
+1. 安裝 Node.js 18 以上。不想從 Git 裝的話，直接到「發行頁面」下載最新的 zip 檔，解開即是完整專案：https://github.com/ainlee/HomePageCMS/releases
+2. 在專案目錄（或解開的資料夾）執行：
+   ```bash
+   npm install
+   npm start
+   ```
+
+   Windows 也可以直接雙擊 `start-editor.bat`：以 `0.0.0.0:3899` 啟動（方便區網內的裝置連進來），並自動開啟瀏覽器。
+3. 開啟 <http://localhost:3456>（用 bat 的是 `http://<主機IP>:3899`）。
+
+要讓編輯器去改 NAS 上 Homepage 的設定，把設定檔路徑指到 NAS 的共用資料夾即可：首次開啟時在設定視窗填，或寫在 `start-editor.local.bat`（不進版控）。
+
+### Docker 版
+
+兩個容器：`homepage-cms`（主程式）與 `homepage-cms-updater`（更新器）。更新器持有 git 複製並發布程式碼快照，所以有了新版，介面的升級鈕就能自己更新，不需要手動重建映像。
+
+步驟：
+
+1. 在要放編輯器的機器上取得程式碼：
+
+   ```bash
+   git clone https://github.com/ainlee/HomePageCMS.git
+   cd HomePageCMS
+   ```
+
+2. 把 [compose.example.yml](compose.example.yml) 複製成 `docker-compose.yml`（與專案同一資料夾，映像要從這裡建置），填上自己機器的值。一定要改的：
+
+   | 欄位 | 填什麼 |
+   | --- | --- |
+   | `ports` | 對外的位址與埠，例如 `192.168.x.x:3457:3456` |
+   | `HOMEPAGE_CONFIG_DIR`（volumes 內的來源路徑） | Homepage 設定目錄的完整路徑（`services.yaml` 所在資料夾），並在裡面先建一個空的 `cms/` 子資料夾，放編輯器的設定與備份 |
+   | `HOMEPAGE_CMS_REVALIDATE_URL` | 儀表板的公開網址；存檔後拿它通知 Homepage 重讀設定 |
+   | `HOMEPAGE_PREVIEW_URL` | 儀表板的公開網址；右側預覽要載入的目標 |
+
+   其他欄位保持範本原值就能跑；私有倉庫才需要改 `UPDATE_REPO_URL`。
+
+3. 啟動：
+
+   ```bash
+   docker compose up -d
+   ```
+
+   首次啟動會自動建置映像，接著更新器複製程式碼、發布第一份快照（幾分鐘）。期間主容器停在「等待」是正常現象，完成後會自動重啟；卡太久就 `docker restart homepage-cms`。
+
+4. 完成。往後有新版時，頂欄的升級鈕（雲端圖示）會亮起呼吸燈，按一下即更新完畢、頁面自動重刷；Homepage 本身的設定與備份完全不碰。
+
+**變體**：
+
+- 同一份 compose：把兩支服務放進 Homepage 那支 compose 檔（同一張 docker 網路），`HOMEPAGE_CMS_REVALIDATE_URL` 改填服務名 `http://homepage:3000` 即可；代價是兩邊綁在同一張卡片、不能獨立升級。
+- 不要升級鈕：刪掉 `homepage-cms-updater` 服務、`HOMEPAGE_CMS_UPDATE_PROXY` 那行與 `./updates/releases:/app:ro` 掛載，程式碼改回燒進映像，升級就要手動重建映像。
+
+**對外開放**：在 Homepage 的 tunnel／反向代理上加一條 `/cms` 路徑規則指到編輯器的 host 埠，路徑要原樣保留、不要剝掉（編輯器自己認得 `/cms` 前綴）。`https://你的網域/cms/` 就是編輯器，根路徑照舊是 Homepage。
+
+### 環境變數
+
+進階設定都用環境變數（Docker 裡寫在 compose 的 `environment`），不寫在程式碼裡。完整清單與註解見 [compose.example.yml](compose.example.yml)，常用者：
+
+| 變數 | 預設值 | 說明 |
+| --- | --- | --- |
+| `HOST` | `127.0.0.1` | 監聽位址；Docker 內固定 `0.0.0.0` |
+| `PORT` | `3456` | 連接埠 |
+| `HOMEPAGE_CONFIG_PATH` | `<專案>/config` | Homepage 設定檔目錄 |
+| `HOMEPAGE_BACKUP_PATH` | `<專案>/backups` | 備份目錄 |
+| `HOMEPAGE_CMS_SETTINGS` | `<專案>/cms-settings.yaml` | 編輯器自身設定檔 |
+| `HOMEPAGE_PREVIEW_URL` | 無 | 預覽目標網址 |
+| `HOMEPAGE_CMS_BASE_PATH` | 無（掛在根路徑） | 掛在子路徑時填，例如 `/cms` |
+| `HOMEPAGE_CMS_REVALIDATE_URL` | 無 | 存檔後通知 Homepage 重讀的網址 |
+| `HOMEPAGE_CMS_UPDATE_PROXY` | 無 | 升級端點轉發到更新器的位址；Docker 佈署才有 |
+| `HOMEPAGE_CMS_PASSWORD` | 無 | 存取密碼；建議改用介面的存取保護 |
+
+同一組設定也能在介面的齒輪視窗裡改，寫進編輯器設定檔。優先序：路徑與連接埠以環境變數為準，預覽網址與監聽位址以設定檔為準——每個欄位下方都會顯示目前生效的值與來源。
+
+## 使用
+
+### 第一次使用
+
+首次開啟會自動跳出設定視窗：把預覽網址填成你的 Homepage 網址、設定檔路徑指到 Homepage 的設定資料夾，存檔後視窗就不再出現；之後按齒輪圖示隨時可以重開。
+
+### 改服務與書籤
+
+- 左側「服務」「書籤」分頁：點分組標題折疊或展開；群組上的「＋」新增分組、項目旁的「＋」新增項目。
+- 項目的對話框欄位跟 Homepage 的 YAML 一致（名稱、連結、縮寫、說明、圖示、狀態小工具、容器、Kubernetes 目標等），改完右側立刻看到結果。
+- 拖曳行左邊的手柄排序，或按「移動」跨分組。
+- 按頂欄「儲存」才真正寫檔：存檔前自動備份、存檔後通知 Homepage 重讀，預覽馬上更新。
+
+### 改儀表板外觀
+
+「首頁外觀」分頁，存檔後預覽立刻更新：
+
+- 配色：選內建色階，或「未設定」跟隨 Homepage 預設。
+- 主題與樣式：主題、卡片透明、標題樣式、卡片與區塊樣式、圖示樣式。
+- 背景：圖片網址，以及模糊、飽和、亮度、透明度。
+- 字型：內建字型、本機字型名稱，或字型來源網址（`.css` 樣式表或 `.woff2` 等字型檔皆可）。
+- 種子色：每條配色一個種子色，調動後整組色階跟著走；也可以直接在自訂 CSS 區寫樣式。
+
+### 備份與還原
+
+每次存檔在備份目錄（預設 `backups/`）留下一份 `services-<時間戳>.yaml` 或 `settings-<時間戳>.yaml`。頂欄的備份圖示開快照清單，選一個還原；還原前會先把目前檔案再留一份，所以還原本身也可逆。
+
+### 語言與配色方案
+
+- 頂欄的語言圖示切換介面語言（內建繁中、簡中、日、英）。
+- 頂欄的調色盤圖示開配色清單：套用、編輯、複製、匯出、匯入。
+- 自己加一個 INI 檔到 `locales/` 或 `themes/` 目錄，介面就會多出選項，不用改程式；配色檔以「匯出」現成的一份當範本改最省事。
 
 ### 存取保護
 
-密碼不要寫進 compose 檔。在介面的齒輪選單開啟「存取保護」後，密碼以雜湊形式存起來，容器重建也不會丟；對外開著 `/cms` 的人就要先輸密碼才進得來。
+齒輪視窗開「存取保護」並填密碼後，存取編輯器都要帶密碼。密碼以 scrypt 雜湊存進編輯器設定檔，不存明文，容器重建也還在。編輯器要對區網或對外開放時，先開這道鎖。
+
+### 升級
+
+每次開啟頁面會自動檢查有沒有新版：
+
+- 本地版：跟 GitHub 遠端比對，有新版時升級鈕亮起；按下後自動拉新碼、裝依賴、以新行程接棒，瀏覽器自動重整理。
+- Docker 版：由更新器容器完成拉碼、發布快照、重啟主容器，頁面自動重刷。
+
+沒有 git、離線或沒有新版時，按鈕保持鎖定——亮了才代表真的有新版本。
+
+### 設定檔格式
+
+編輯器讀寫的就是 Homepage 原本的 YAML，手改與表單改可以混用。欄位說明見 [Homepage 官方文件](https://gethomepage.dev/configs/services/)。如果檔案在你編輯期間被其他程式改過，存檔會被拒絕並提示重新載入，不會蓋掉。
+
+## 要注意的事
+
+- 綁 `0.0.0.0` 代表任何連得到這台機器的人都能改你的 Homepage。預設只綁 `127.0.0.1`；要讓區網裝置連進來才開放，並同時開啟存取保護。
+- 監聽位址與連接埠在介面上改完，要重新啟動才生效，介面會標示。
+- 遇到空白頁或奇怪的錯誤，先按 Ctrl+F5 強制重新整理。
+- 儀表板若掛在快取代理（CDN）後，`/api/config/custom.css` 會被快取數小時，改完「自訂 CSS」可能暫時看不到；以 Cloudflare 為例，在 Cache Rules 加一條對該路徑「不快取」的規則。
 
 ## 開發
 
-本專案以 OpenSpec 規格驅動，行為記錄在 `openspec/specs/`；要新增或變更行為，先在
-`openspec/changes/` 寫一份變更提案。開發慣例見 [AGENTS.md](AGENTS.md)。
+行為規格在 `openspec/specs/`，開發慣例見 [AGENTS.md](AGENTS.md)。
 
 ```bash
 npm test    # 版面測試，需要本機有 Chrome 且編輯器正在執行
 ```
 
-## License
+## 授權
 
-MIT，詳見 [LICENSE](LICENSE)。使用的第三方元件：
+本專案採 **MIT 授權**，詳見 [LICENSE](LICENSE)：可以自由使用、修改、複製與商用，唯一條件是保留授權聲明。軟體「如實提供」，不附任何明示或暗示的保證。
 
-| 元件 | 授權 | 取得方式 |
-| --- | --- | --- |
-| [Express](https://expressjs.com/) | MIT | npm 依賴 |
-| [js-yaml](https://github.com/nodeca/js-yaml) | MIT | npm 依賴 |
-| [Vue 3](https://vuejs.org/) | MIT | npm 依賴，由伺服器提供 |
-| [Material Design Icons](https://pictogrammers.com/library/mdi/) | Apache-2.0 | npm 依賴，由伺服器提供 |
+主要第三方元件：
+
+| 元件 | 授權 |
+| --- | --- |
+| [Express](https://expressjs.com/) | MIT |
+| [js-yaml](https://github.com/nodeca/js-yaml) | MIT |
+| [Vue 3](https://vuejs.org/) | MIT |
+| [Material Design Icons](https://pictogrammers.com/library/mdi/) | Apache-2.0 |
