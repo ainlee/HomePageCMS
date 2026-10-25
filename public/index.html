@@ -35,7 +35,7 @@
           <i class="mdi mdi-cog"></i>
         </button>
         <button @click="checkAndUpgrade" class="btn btn-icon btn-secondary upgrade-btn" :title="upgradeOffline ? t('error.noInternetConnection') : t('topbar.checkUpgrade')" :class="{ 'upgrade-available': hasUpdate }" :disabled="!hasUpdate">
-          <i class="mdi mdi-cloud-sync"></i>
+          <i class="mdi mdi-rocket-launch"></i>
         </button>
         <button @click="loadBackups" class="btn btn-secondary btn-backups" :title="t('topbar.backups')">
           <i class="mdi mdi-history"></i> <span class="btn-label">{{ t('topbar.backups') }}</span>
