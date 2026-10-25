@@ -29,14 +29,6 @@ services:
     image: homepage-cms:latest
     container_name: homepage-cms
     restart: unless-stopped
-    # LIVING layout: the code runs from the published snapshot, not from the
-    # image. The image only provides the node runtime; the volume is created
-    # by the updater on first boot, so the container may need one or two
-    # restarts before the first release exists.
-    # BAKED layout: remove this volume and the HOMEPAGE_CMS_UPDATE_PROXY
-    # variable, and comment out the updater service below.
-    # volumes:
-    #   - ./updates/releases/current:/app:ro
     # Pick a free host port that does not collide with a standalone editor running
     # on the machine (3899 in the single-machine layout). LAN-only; the public
     # URL goes through your tunnel.
@@ -47,10 +39,11 @@ services:
       # in front decides who can reach it.
       HOST: '0.0.0.0'
       PORT: '3456'
-      # Mount points the editor works against (see the volumes below).
-      HOMEPAGE_CONFIG_PATH: /app/config
-      HOMEPAGE_CMS_SETTINGS: /app/cms/cms-settings.yaml
-      HOMEPAGE_BACKUP_PATH: /app/cms/backups
+      # Mount points the editor works against (see the volumes below). In the
+      # living layout /app is the releases directory, so config mounts live under /data.
+      HOMEPAGE_CONFIG_PATH: /data/config
+      HOMEPAGE_CMS_SETTINGS: /data/cms/cms-settings.yaml
+      HOMEPAGE_BACKUP_PATH: /data/cms/backups
       # The editor is reached at <domain>/cms/, so it serves itself under that
       # prefix. Empty means run at the domain root instead.
       HOMEPAGE_CMS_BASE_PATH: /cms
@@ -65,15 +58,25 @@ services:
       # Access protection: do not put a password in this file. Enable it in the
       # editor's settings dialog instead; the salted hash is stored in the cms/
       # settings file, which survives container recreation.
-      # LIVING layout only: forward the upgrade API to the sidecar.
-      # HOMEPAGE_CMS_UPDATE_PROXY: 'http://homepage-cms-updater:8788'
+      # Forward the upgrade API to the updater sidecar over the compose
+      # network - this is what lights the in-page upgrade button.
+      HOMEPAGE_CMS_UPDATE_PROXY: 'http://homepage-cms-updater:8788'
     volumes:
+      # The releases directory, mounted read-only. Mount the DIRECTORY, not
+      # the "current" link: a bind mount of the link would freeze the
+      # container on the release that existed at create time, and the swap
+      # would only take effect on the next recreation. The container
+      # resolves /app/current per request, so a republish is picked up the
+      # moment the app container restarts after an upgrade.
+      # Before the first publish this directory is empty; the entry point
+      # waits instead of crash-looping.
+      - ./updates/releases:/app:ro
       # The Homepage config directory: the editor reads/writes services.yaml,
       # bookmarks.yaml, settings.yaml and custom.css there.
-      - HOMEPAGE_CONFIG_DIR:/app/config
+      - HOMEPAGE_CONFIG_DIR:/data/config
       # The cms/ subdirectory of that same path: the editor's own settings file
       # and its backups.
-      - HOMEPAGE_CONFIG_DIR/cms:/app/cms
+      - HOMEPAGE_CONFIG_DIR/cms:/data/cms
 
   # The updater sidecar: owns the git clone (./updates/repo) and publishes
   # runnable snapshots (./updates/releases). Rebuilt never - it has no code

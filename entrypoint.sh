@@ -1,18 +1,19 @@
 #!/bin/sh
 # Baked layout: the code ships inside the image at /app, start in place.
-# Living layout: /app is the mounted releases directory. The updater
-# publishes r-<id> snapshots and points the "current" symlink at the active
-# one; resolving the link PER REQUEST (through the container filesystem, not
-# at mount time) is what lets a running container follow the switch.
-if [ -d /app/current ] && [ ! -f /app/server.js ]; then
-  APP_DIR=/app/current
-else
+# Living layout: /app is the mounted RELEASES directory (never the symlink
+# itself: a bind mount of the link would freeze the container on the
+# release that existed at create time). The updater publishes r-<id>
+# snapshots plus a "current" link, so /app/server.js does not exist and
+# the code path is /app/current.
+if [ -f /app/server.js ]; then
   APP_DIR=/app
+else
+  APP_DIR=/app/current
 fi
 
-# First boot of a fresh living install: the releases directory is still
-# empty until the updater clones and publishes. Wait (bounded - the updater
-# finishes within minutes) instead of exit/crash-loop.
+# First boot of a fresh living install: no release exists until the updater
+# clones and publishes. Wait (bounded - it finishes within minutes) instead
+# of exit/crash-loop.
 if [ ! -f "$APP_DIR/server.js" ]; then
   echo "waiting for a published release under $APP_DIR ..."
   i=0

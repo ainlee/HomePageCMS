@@ -23,7 +23,17 @@ HOMEPAGE_CMS_PASSWORD   存取密碼（設定後所有 API 都需要它；不放
 HOMEPAGE_CMS_LOCALES_PATH 語系檔目錄（預設 <專案>/locales/）
 HOMEPAGE_CMS_THEMES_PATH  配色方案目錄（預設 <專案>/themes/）
 HOMEPAGE_CMS_LOCALE       介面語言（預設 zh-TW；設定檔有指定時以設定檔為準）
+HOMEPAGE_CMS_UPDATE_PROXY 升級 API 轉發端點（docker 佈署指向 updater sidecar）
 ```
+
+升級檢查：頂欄的升級按鈕預設鎖定；每次開啟頁面時檢查 GitHub 倉庫的「快照」（commit）
+有沒有異動。本機執行（有 git checkout）直接比對遠端 origin/HEAD，有新版時按鈕亮起、
+帶呼吸燈，按下後 git pull --ff-only 加 npm install，新行程接棒、瀏覽器重新整理。
+
+Docker 佈署吃不到 git checkout，改走 updater sidecar（server/updater.cjs，零相依）：
+它持有持久的 git clone，把新版發布成快照（releases/r-<id> 加 current 符號連結，
+原子切換），再經 docker socket 重啟主容器；主程式以環境變數 HOMEPAGE_CMS_UPDATE_PROXY 
+把兩個升級端點轉發過去。無 git、離線或快照相同時一律維持鎖定，不亮假燈。
 
 同一組設定也能在介面的齒輪按鈕裡改，寫進 `cms-settings.yaml`。兩種來源的優先序
 不同：**檔案位置與連接埠**是環境變數優先（部署用環境變數掛載目錄，介面不該蓋掉
