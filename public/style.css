@@ -1095,6 +1095,79 @@ body {
 
 .layout-grid .form-group:first-child { grid-column: auto; }
 
+/* Information widgets (widgets.yaml): the cards of the list, and the panel
+   they sit in. */
+.widgets-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.widgets-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.widgets-list { display: flex; flex-direction: column; gap: 8px; }
+
+.widget-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.widget-card-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--accent);
+  font-size: 20px;
+}
+
+.widget-card-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.widget-card-type {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.widget-card-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.widget-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.widgets-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 4px 0;
+}
+
 .icon-input-wrap { display: flex; gap: 8px; align-items: center; }
 .icon-input-wrap input { flex: 1; }
 .icon-preview {
@@ -1603,6 +1676,13 @@ body {
   .layout-grid {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+  /* The widgets list wraps on a phone so the action buttons stay reachable. */
+  .widgets-panel { padding: 12px; }
+  .widget-card { flex-wrap: wrap; }
+  .widget-card-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 

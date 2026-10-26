@@ -63,6 +63,9 @@
           <button @click="openLayoutTab" class="tab-btn" :class="{ active: activeTab === 'layout' }">
             <i class="mdi mdi-view-grid"></i> {{ t('tabs.layout') }}
           </button>
+          <button @click="activeTab = 'widgets'" class="tab-btn" :class="{ active: activeTab === 'widgets' }">
+            <i class="mdi mdi-widgets"></i> {{ t('tabs.widgets') }}
+          </button>
         </div>
           <button v-if="activeTab === 'services'" @click="addGroup" class="btn btn-small btn-primary">
             <i class="mdi mdi-plus"></i> {{ t('tabs.addGroup') }}
@@ -70,8 +73,12 @@
           <button v-if="activeTab === 'bookmarks'" @click="addBookmarkGroup" class="btn btn-small btn-primary">
             <i class="mdi mdi-plus"></i> {{ t('tabs.addBookmarkGroup') }}
           </button>
+          <button v-if="activeTab === 'widgets'" @click="addWidget" class="btn btn-small btn-primary">
+            <i class="mdi mdi-plus"></i> {{ t('tabs.addWidget') }}
+          </button>
           <span class="stats" v-if="activeTab === 'services'">{{ t('tabs.statsServices', { count: groups.length, total: totalItems }) }}</span>
           <span class="stats" v-if="activeTab === 'bookmarks'">{{ t('tabs.statsBookmarks', { count: bookmarkGroups.length, total: activeTotalItems }) }}</span>
+          <span class="stats" v-if="activeTab === 'widgets'">{{ t('tabs.statsWidgets', { count: widgets.length }) }}</span>
           <span class="stats" v-if="activeTab === 'appearance'">
             <template v-if="appearanceDirty || customCssDirty">{{ t('appearance.unsaved') }}</template>
             <template v-else-if="appearanceReady">{{ t('appearance.savedState') }}</template>
@@ -594,6 +601,44 @@
             </div>
           </div>
         </template>
+
+        <!-- Widgets panel -->
+        <template v-if="activeTab === 'widgets'">
+          <div class="widgets-panel">
+            <div class="widgets-head">
+              <p class="layout-hint">{{ t('widgets.hint') }}</p>
+              <button @click="saveWidgets" class="btn btn-small btn-primary" :disabled="saving">
+                <i class="mdi mdi-content-save"></i> {{ t('widgets.save') }}
+              </button>
+            </div>
+            <div class="widgets-list">
+              <div v-for="(w, wi) in widgets" :key="w.id" class="widget-card">
+                <div class="widget-card-icon">
+                  <i class="mdi" :class="widgetIconClass(w.type)"></i>
+                </div>
+                <div class="widget-card-info">
+                  <span class="widget-card-type">{{ w.type }}</span>
+                  <span class="widget-card-desc">{{ widgetCardSummary(w) }}</span>
+                </div>
+                <div class="widget-card-actions">
+                  <button @click="editWidget(wi)" class="btn btn-icon" :title="t('widgets.edit')">
+                    <i class="mdi mdi-pencil"></i>
+                  </button>
+                  <button @click="moveWidgetUp(wi)" class="btn btn-icon" :title="t('widgets.moveUp')" :disabled="wi === 0">
+                    <i class="mdi mdi-arrow-up"></i>
+                  </button>
+                  <button @click="moveWidgetDown(wi)" class="btn btn-icon" :title="t('widgets.moveDown')" :disabled="wi === widgets.length - 1">
+                    <i class="mdi mdi-arrow-down"></i>
+                  </button>
+                  <button @click="deleteWidget(wi)" class="btn btn-icon btn-danger" :title="t('widgets.delete')">
+                    <i class="mdi mdi-delete"></i>
+                  </button>
+                </div>
+              </div>
+              <p v-if="!widgets.length" class="widgets-empty">{{ t('widgets.empty') }}</p>
+            </div>
+          </div>
+        </template>
         </div>      </div>
 
       <div v-show="showPreview" class="resizer" 
@@ -903,6 +948,67 @@
         <div class="modal-actions">
           <button @click="showBookmarkItemModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
           <button @click="saveBookmarkItem" class="btn btn-primary">{{ t('common.confirm') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Widget Modal -->
+    <div v-if="showWidgetModal" class="modal-overlay" @click.self="closeOnOverlayClick($event, () => { showWidgetModal = false })">
+      <div class="modal modal-wide">
+        <h2><i class="mdi mdi-widget-edit"></i> {{ editingWidgetIndex === null ? t('widgets.addTitle') : t('widgets.editTitle') }}</h2>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>{{ t('widget.type') }}</label>
+            <select v-model="editingWidget.type">
+              <option value="">{{ t('widget.typeNone') }}</option>
+              <option v-for="w in widgetTypes" :key="w" :value="w">{{ w }}</option>
+              <option v-if="editingWidget.type && !widgetTypes.includes(editingWidget.type)" :value="editingWidget.type">{{ editingWidget.type }} *</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('widget.label') }}</label>
+            <input v-model="editingWidget.label" type="text">
+          </div>
+          <div class="form-group">
+            <label>{{ t('widget.url') }}</label>
+            <input v-model="editingWidget.url" type="text" placeholder="https://...">
+          </div>
+          <div class="form-group">
+            <label>{{ t('widget.key') }}</label>
+            <input v-model="editingWidget.key" type="text">
+          </div>
+          <div class="form-group">
+            <label>{{ t('widget.provider') }}</label>
+            <input v-model="editingWidget.provider" type="text">
+          </div>
+          <div class="form-group">
+            <label>{{ t('widget.target') }}</label>
+            <select v-model="editingWidget.target">
+              <option value="">{{ t('widget.targetUnset') }}</option>
+              <option value="_blank">_blank</option>
+              <option value="_self">_self</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('widget.latitude') }}</label>
+            <input v-model="editingWidget.latitude" type="text" inputmode="decimal">
+          </div>
+          <div class="form-group">
+            <label>{{ t('widget.longitude') }}</label>
+            <input v-model="editingWidget.longitude" type="text" inputmode="decimal">
+          </div>
+          <div class="form-group">
+            <label>{{ t('widget.cache') }}</label>
+            <input v-model="editingWidget.cache" type="text" inputmode="numeric">
+          </div>
+          <div class="form-group">
+            <label>{{ t('widget.href') }}</label>
+            <input v-model="editingWidget.href" type="text" placeholder="https://...">
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button @click="showWidgetModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
+          <button @click="saveWidget" class="btn btn-primary">{{ t('common.confirm') }}</button>
         </div>
       </div>
     </div>

@@ -891,6 +891,32 @@ const cmsApp = createApp({
       return extra > 0 ? [...shown, '+' + extra] : shown;
     }
 
+    // The icon of a widget card: the mdi glyph of the type, falling back to a
+    // generic widget.
+    function widgetIconClass(type) {
+      const known = {
+        resources: 'mdi-speedometer', search: 'mdi-magnify', calendar: 'mdi-calendar',
+        datetime: 'mdi-clock', greeting: 'mdi-account', logo: 'mdi-image',
+        weather: 'mdi-weather-partly-cloudy', glances: 'mdi-gauge',
+        kubernetes: 'mdi-sailboat', stocks: 'mdi-candle-variant',
+        unifi_controller: 'mdi-router-network', openmeteo: 'mdi-weather-partly-cloudy',
+        openweathermap: 'mdi-weather-partly-cloudy', feed: 'mdi-rss-box',
+        iframe: 'mdi-view-agenda', customapi: 'mdi-api'
+      };
+      return 'mdi-' + (known[type] || 'widget');
+    }
+
+    // One line under the type: the options that are set, joined.
+    function widgetCardSummary(w) {
+      const parts = [];
+      if (w.label) parts.push('label: ' + w.label);
+      if (w.url) parts.push('url: ' + w.url);
+      if (w.provider) parts.push('provider: ' + w.provider);
+      if (w.key) parts.push('key: set');
+      if (w.href) parts.push('href: ' + w.href);
+      return parts.join('  ');
+    }
+
     // The multi-widget editor inside the item dialog: add / remove a row.
     function addWidgetRow() {
       editingItem.widgets.push({ ...blankWidget() });
@@ -1020,6 +1046,7 @@ const cmsApp = createApp({
       loadSettings();
       loadServices();
       loadBookmarks();
+      loadWidgets();
       checkForUpdates();
     }
 
@@ -1245,6 +1272,13 @@ const cmsApp = createApp({
             body: JSON.stringify({ raw: buildBookmarkYaml(), hash: bookmarksHash.value })
           })
         ];
+        // The information widgets are a third independent file, written with the
+        // others so a single save captures the whole dashboard.
+        jobs.push(apiFetch('/api/widgets', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw: buildWidgetsYaml(), hash: widgetsHash.value })
+        }));
         if (customCssDirty.value) {
           jobs.push(apiFetch('/api/homepage-custom-css', {
             method: 'PUT',
@@ -1255,15 +1289,17 @@ const cmsApp = createApp({
         const results = await Promise.all(jobs);
         const svcJson = await results[0].json();
         const bmJson = await results[1].json();
-        const cssJson = results[2] ? await results[2].json() : null;
-        if (!svcJson.success || !bmJson.success || (cssJson && !cssJson.success)) {
-          const failed = [svcJson, bmJson, cssJson].find((j) => j && !j.success);
+        const widgetsJson = await results[2].json();
+        const cssJson = results[3] ? await results[3].json() : null;
+        if (!svcJson.success || !bmJson.success || !widgetsJson.success || (cssJson && !cssJson.success)) {
+          const failed = [svcJson, bmJson, widgetsJson, cssJson].find((j) => j && !j.success);
           showToast(t('toast.saveFailed', { msg: (failed && failed.error) || '' }), 'error');
           saving.value = false;
           return;
         }
         servicesHash.value = svcJson.hash || null;
         bookmarksHash.value = bmJson.hash || null;
+        widgetsHash.value = widgetsJson.hash || null;
         if (cssJson) {
           customCss.hash = cssJson.hash || null;
           customCss.exists = true;
@@ -1537,6 +1573,150 @@ const cmsApp = createApp({
       } catch (err) {
         showToast(t('toast.bookmarksSaveFailed', { msg: err.message }), 'error');
       }
+    }
+
+    // ---- Information widgets (widgets.yaml) ----
+    // The dashboard's top strip. Upstream stores the file as a list of
+    // single-key objects ( one key = the widget type ); the editor keeps
+    // the options it does not model, so a save only replaces what was
+    // actually edited.
+    const WIDGET_OPTION_FIELDS = ['label', 'url', 'key', 'provider', 'target', 'latitude', 'longitude', 'cache', 'href'];
+
+    function parseWidgetsData(data) {
+      if (!Array.isArray(data)) return [];
+      return data.map((entry) => {
+        const name = Object.keys(entry || {})[0];
+        const raw = entry && entry[name];
+        const conf = raw && typeof raw === 'object' ? raw : {};
+        return {
+          id: uid(),
+          type: name || '',
+          label: conf.label || '',
+          url: conf.url || '',
+          key: conf.key != null ? String(conf.key) : '',
+          provider: conf.provider || '',
+          target: conf.target || '',
+          latitude: conf.latitude != null ? String(conf.latitude) : '',
+          longitude: conf.longitude != null ? String(conf.longitude) : '',
+          cache: conf.cache != null ? String(conf.cache) : '',
+          href: conf.href || '',
+          source: conf
+        };
+      });
+    }
+
+    async function loadWidgets() {
+      try {
+        const res = await apiFetch('/api/widgets');
+        const json = await res.json();
+        if (json.success) {
+          widgets.value = parseWidgetsData(json.data);
+          widgetsHash.value = json.hash || null;
+        }
+      } catch (err) {
+        showToast(t('toast.loadWidgetsFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    function buildWidgetsYaml() {
+      const doc = widgets.value.map((w) => {
+        const conf = { ...(w.source || {}) };
+        WIDGET_OPTION_FIELDS.forEach((field) => setOrDelete(conf, field, w[field]));
+        // numbers stay numbers: cache / latitude / longitude
+        if (conf.latitude !== undefined) conf.latitude = Number(w.latitude) || w.latitude;
+        if (conf.longitude !== undefined) conf.longitude = Number(w.longitude) || w.longitude;
+        if (conf.cache !== undefined && conf.cache !== '') conf.cache = Number(w.cache) || conf.cache;
+        const entry = {};
+        entry[w.type] = conf;
+        return entry;
+      });
+      return WIDGETS_HEADER + yamlLib.dump(doc, { lineWidth: -1 });
+    }
+
+    async function saveWidgets() {
+      try {
+        const yaml = buildWidgetsYaml();
+        const res = await apiFetch('/api/widgets', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw: yaml, hash: widgetsHash.value })
+        });
+        const json = await res.json();
+        if (json.success) {
+          widgetsHash.value = json.hash || null;
+          showToast(t('toast.widgetsSaved'));
+        } else {
+          showToast(t('toast.widgetsSaveFailed', { msg: json.error }), 'error');
+        }
+      } catch (err) {
+        showToast(t('toast.widgetsSaveFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    // Widget CRUD: the new widget is added to the list, the dialog edits the
+    // selected one, reordering is the up/down buttons of the list.
+    function addWidget() {
+      editingWidgetIndex.value = null;
+      Object.assign(editingWidget, { type: '', label: '', url: '', key: '', provider: '', target: '', latitude: '', longitude: '', cache: '', href: '' });
+      showWidgetModal.value = true;
+    }
+
+    function editWidget(index) {
+      editingWidgetIndex.value = index;
+      const w = widgets.value[index];
+      Object.assign(editingWidget, {
+        type: w.type, label: w.label, url: w.url, key: w.key,
+        provider: w.provider, target: w.target, latitude: w.latitude,
+        longitude: w.longitude, cache: w.cache, href: w.href
+      });
+      showWidgetModal.value = true;
+    }
+
+    function saveWidget() {
+      const type = editingWidget.type.trim();
+      if (!type) { showToast(t('widget.typeRequired'), 'error'); return; }
+      const values = {
+        type,
+        label: editingWidget.label.trim(),
+        url: editingWidget.url.trim(),
+        key: editingWidget.key.trim(),
+        provider: editingWidget.provider.trim(),
+        target: editingWidget.target,
+        latitude: editingWidget.latitude.trim(),
+        longitude: editingWidget.longitude.trim(),
+        cache: editingWidget.cache.trim(),
+        href: editingWidget.href.trim()
+      };
+      if (editingWidgetIndex.value === null) {
+        widgets.value.push({ id: uid(), ...values, source: {} });
+      } else {
+        const w = widgets.value[editingWidgetIndex.value];
+        Object.assign(w, values, { source: { ...(w.source || {}) } });
+        w.type = type;
+      }
+      showWidgetModal.value = false;
+    }
+
+    function deleteWidget(index) {
+      const w = widgets.value[index];
+      if (!confirm(t('widget.confirmDelete', { name: w.type }))) return;
+      widgets.value.splice(index, 1);
+    }
+
+    function moveWidgetUp(index) {
+      if (index === 0) return;
+      const arr = widgets.value;
+      const tmp = arr[index - 1];
+      arr[index - 1] = arr[index];
+      arr[index] = tmp;
+    }
+
+    function moveWidgetDown(index) {
+      const arr = widgets.value;
+      if (index >= arr.length - 1) return;
+      const tmp = arr[index];
+      arr[index] = arr[index + 1];
+      arr[index + 1] = tmp;
     }
 
     // ---- Homepage appearance ----
@@ -2315,6 +2495,7 @@ const cmsApp = createApp({
         // The config directory may have changed, so the services are read again.
         loadServices();
         loadBookmarks();
+        loadWidgets();
         checkForUpdates();
       } catch (err) {
         showToast(t('toast.settingsSaveFailed', { msg: err.message }), 'error');
@@ -2409,6 +2590,7 @@ const cmsApp = createApp({
         loadSettings();
         loadServices();
         loadBookmarks();
+        loadWidgets();
         checkForUpdates();
       }
       // The colour schemes are needed for the appearance dialog and for knowing
@@ -2454,6 +2636,9 @@ const cmsApp = createApp({
       editingGroupId, editingItem, editingGroup,
       showBookmarkGroupModal, showBookmarkItemModal,
       editingBookmarkGroupId, editingBookmarkItemId, editingBookmarkGroup, editingBookmarkItem,
+      widgets, widgetsHash, showWidgetModal, editingWidgetIndex, editingWidget,
+      loadWidgets, saveWidgets, addWidget, editWidget, saveWidget, deleteWidget,
+      moveWidgetUp, moveWidgetDown, widgetIconClass, widgetCardSummary,
       appearance, appearanceMeta, appearancePalette, knownPaletteIds, appearanceDirty, appearanceReady,
       appearanceChoices, appearanceChoiceLabel, loadAppearance, saveAppearance, openAppearanceTab,
       layoutGroups, layoutValues, layoutReady, layoutDirty, layoutMeta, knownGroupNames,
