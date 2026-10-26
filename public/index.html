@@ -680,7 +680,13 @@
         </div>
         <div class="form-group">
           <label>{{ t('group.icon') }}</label>
-          <input v-model="editingGroup.icon" type="text" placeholder="mdi-robot / home-assistant.png">
+          <div class="icon-input-wrap">
+            <input v-model="editingGroup.icon" type="text" placeholder="mdi-robot / home-assistant.png">
+            <div class="icon-preview" v-if="editingGroup.icon">
+              <i v-if="isMdiIcon(editingGroup.icon)" class="mdi icon-preview-glyph" :class="mdiClassOf(editingGroup.icon)"></i>
+              <img v-else-if="iconPreviewUrl(editingGroup.icon, 'mdi')" :src="iconPreviewUrl(editingGroup.icon, 'mdi')" class="icon-preview-img">
+            </div>
+          </div>
         </div>
         <div class="modal-actions">
           <button @click="showGroupModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
@@ -716,7 +722,13 @@
           </div>
           <div class="form-group">
             <label>{{ t('layout.icon') }}</label>
-            <input v-model="editingLayoutGroup.icon" type="text" placeholder="mdi-robot / home-assistant.png">
+            <div class="icon-input-wrap">
+              <input v-model="editingLayoutGroup.icon" type="text" placeholder="mdi-robot / home-assistant.png">
+              <div class="icon-preview" v-if="editingLayoutGroup.icon">
+                <i v-if="isMdiIcon(editingLayoutGroup.icon)" class="mdi icon-preview-glyph" :class="mdiClassOf(editingLayoutGroup.icon)"></i>
+                <img v-else-if="iconPreviewUrl(editingLayoutGroup.icon, 'mdi')" :src="iconPreviewUrl(editingLayoutGroup.icon, 'mdi')" class="icon-preview-img">
+              </div>
+            </div>
           </div>
           <div class="form-group">
             <label>{{ t('layout.header') }}</label>
@@ -937,8 +949,14 @@
         </div>
         <div class="form-group">
           <label>{{ t('bookmark.icon') }}</label>
-          <input id="bookmark-icon" v-model="editingBookmarkItem.icon" type="text"
-                 :placeholder="t('bookmark.iconPlaceholder')" @keyup.enter="saveBookmarkItem">
+          <div class="icon-input-wrap">
+            <input id="bookmark-icon" v-model="editingBookmarkItem.icon" type="text"
+                   :placeholder="t('bookmark.iconPlaceholder')" @keyup.enter="saveBookmarkItem">
+            <div class="icon-preview" v-if="editingBookmarkItem.icon">
+              <i v-if="isMdiIcon(editingBookmarkItem.icon)" class="mdi icon-preview-glyph" :class="mdiClassOf(editingBookmarkItem.icon)"></i>
+              <img v-else-if="iconPreviewUrl(editingBookmarkItem.icon, 'mdi')" :src="iconPreviewUrl(editingBookmarkItem.icon, 'mdi')" class="icon-preview-img">
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label>{{ t('bookmark.target') }}</label>
