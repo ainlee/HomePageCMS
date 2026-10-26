@@ -22,24 +22,25 @@
 
 ### Requirement: 服務分組可管理
 
-系統 SHALL 讓使用者新增、重新命名、刪除與折疊服務分組，並支援設定分組的欄位寬度
-(col-span)。col-span SHALL 實際寫入設定檔；上游 Homepage 會忽略這個欄位，但不得
-因此無法解析設定檔。
+系統 SHALL 讓使用者新增、重新命名、刪除與折疊服務分組。群組的版面設定
+（圖示、分頁、排列樣式、欄數、標題顯示、初始折疊、等高卡片）SHALL 寫入
+settings.yaml 的 layout 區塊、以群組名稱為鍵，並在「版面」分頁管理
+（見 layout-editing）。分組對話框 SHALL NOT 提供上游不讀取的欄位
+（col-span）；檔案裡既有的 col-span SHALL 以未建模欄位保留，不因此
+無法解析設定檔。
 
 #### Scenario: 刪除分組
-
 - **WHEN** 使用者刪除一個含有項目的分組
 - **THEN** 系統先要求確認，確認後移除該分組及其所有項目
 
 #### Scenario: 折疊分組
-
 - **WHEN** 使用者點擊分組名稱
 - **THEN** 該分組的項目清單收合，箭頭方向改變
 
 #### Scenario: 設定分組寬度會寫入檔案
-
-- **WHEN** 使用者把某個分組的欄位寬度設為 2 並存檔
-- **THEN** 設定檔中該分組帶有 `col-span: 2`，且 Homepage 仍能解析整份設定檔
+- **WHEN** services.yaml 的某分組已有 col-span，使用者存檔
+- **THEN** 該分組的 col-span 以未建模欄位保留、Homepage 仍能解析整份設定檔；
+  介面不提供設定此欄位（群組寬度改由 layout 區塊的 columns 決定）
 
 ### Requirement: 服務可跨分組拖曳
 系統 SHALL 支援以拖曳重新排列服務，並將服務拖曳至其他分組。拖曳 MUST 提供視覺提示以指出放置目標。拖曳 SHALL 在觸控裝置上可用：把手 MUST 以 `touch-action: none` 標記，使把手區的手勢不被瀏覽器攬去做捲動；觸控按壓 SHALL 記錄原始座標，只有手指移動了一段距離之後才真正起拖，讓輕點與長按不被誤判成拖曳。
@@ -65,7 +66,8 @@
 - **THEN** 頁面不捲動，滑動改由拖曳引擎處理
 
 ### Requirement: 服務可設定狀態小工具
-系統 SHALL 讓每個服務選擇一種狀態追蹤方式：無、本機 Docker 容器、遠端 ICMP ping，或遠端 HTTP API，並記錄對應的值。服務 SHALL 可設定 Docker 主機（server）、排序權重（weight）、Kubernetes 目標（namespace 加 app 或 podSelector），並可掛多個 widget（複數 widgets）。
+
+系統 SHALL 讓每個服務選擇狀態追蹤方式與通用參數：widget 型別（無或上游支援的任意型別）、對應值、Docker 主機（server）、排序權重（weight）、Kubernetes 目標（namespace、app、podSelector）。服務 SHALL 可掛多個 widget（複數 widgets），並 SHALL 提供每組 widget 的通用欄位（url、key、container、host、fields、hideErrors）；未建模的欄位（headers、highlight 等）SHALL 保留原樣。未填的欄位 SHALL 不寫入；檔案裡的 widget 型別不在清單中時 SHALL 保留原值並提示。服務 SHALL 可設定 siteMonitor 網址、狀態樣式（statusStyle：dot／basic／未設）與統計展開（showStats：true／false／未設）。
 
 #### Scenario: 設定容器追蹤
 - **WHEN** 使用者將狀態追蹤設為本機 Docker 容器並填入容器名稱
@@ -91,10 +93,17 @@
 - **WHEN** 使用者將狀態追蹤設為遠端 ICMP Ping 並填入 IP 位址
 - **THEN** 存檔後的 YAML 對該服務包含 ping 欄位
 
-### Requirement: 書籤分組可管理
-系統 SHALL 讓使用者新增、編輯、刪除書籤分組與其中的書籤項目，每個書籤包含名稱、縮寫、連結、說明（description）與圖示（icon）。
+#### Scenario: 設定 siteMonitor
+- **WHEN** 使用者填入 siteMonitor 網址並存檔
+- **THEN** 存檔後的 YAML 對該服務包含 siteMonitor 欄位，未填時不寫入
 
-書籤分組與書籤項目的新增與編輯 SHALL 使用對話框完成，MUST NOT 使用瀏覽器原生的輸入視窗。書籤項目的對話框 SHALL 同時顯示名稱、連結、縮寫、說明與圖示欄位，連結欄位 SHALL 帶入目前的連結，讓使用者一眼看見連結並可直接修改。名稱與連結 SHALL 為必填；縮寫留空時 SHALL 以名稱的前兩個字元補上。說明未填時 Homepage 顯示連結主機名稱。編輯器沒有建模的欄位 SHALL 在存檔時保留。
+#### Scenario: 未建模的 widget 型別保留
+- **WHEN** 檔案裡的 widget 型別不在清單中（例如上游新版新增的型別）
+- **THEN** 該 widget 原樣保留，介面顯示其原值並提示型別未被建模
+
+### Requirement: 書籤分組可管理
+
+系統 SHALL 讓使用者新增、編輯、刪除書籤分組與其中的書籤項目，每個書籤包含名稱、縮寫、連結、說明（description）、圖示（icon）與開啟目標（target）。書籤項目的對話框 SHALL 顯示上述欄位；名稱與連結 SHALL 為必填；縮寫留空時 SHALL 以名稱的前兩個字元補上；說明未填時 Homepage 顯示連結主機名稱；編輯器沒有建模的欄位 SHALL 在存檔時保留。
 
 #### Scenario: 新增書籤
 - **WHEN** 使用者新增書籤並提供名稱、縮寫與連結
@@ -116,18 +125,23 @@
 - **WHEN** 使用者按下書籤分組的編輯鈕並輸入新的名稱
 - **THEN** 分組以新名稱顯示，存檔後 bookmarks.yaml 的分組鍵名一併更新
 
+#### Scenario: 設定書籤開啟目標
+- **WHEN** 使用者把書籤的 target 設為 _blank 並存檔
+- **THEN** 存檔後的 bookmarks.yaml 對該書籤包含 target 欄位，未填時不寫入
+
 ### Requirement: 設定檔位置可由環境變數指定
 
-系統 SHALL 從 HOMEPAGE_CONFIG_PATH 讀取設定檔位置，未設定時使用專案目錄下的 config。首次啟動且設定檔不存在時，系統 SHALL 由範例檔建立初始設定。
+系統 SHALL 從 HOMEPAGE_CONFIG_PATH 讀取設定檔位置，未設定時使用專案目錄下的
+config。首次啟動且設定檔不存在時，系統 SHALL 由範例檔建立初始設定；已存在的
+檔案 MUST NOT 被範例檔覆寫。初始設定包含 services.yaml、bookmarks.yaml 與
+widgets.yaml。
 
 #### Scenario: 乾淨環境首次啟動
-
-- **WHEN** 設定路徑下沒有 services.yaml，但專案中有 services.example.yaml
-- **THEN** 伺服器以範例檔建立 services.yaml 與 bookmarks.yaml
+- **WHEN** 設定路徑下沒有 services.yaml、bookmarks.yaml 與 widgets.yaml
+- **THEN** 伺服器以對應的範例檔建立三份檔案
 
 #### Scenario: 已有設定不被覆寫
-
-- **WHEN** 設定路徑下已存在 services.yaml
+- **WHEN** 設定路徑下已存在某份設定檔
 - **THEN** 伺服器保留原檔，不以範例檔覆寫
 
 ### Requirement: 書籤與服務共用同一套排序與拖曳體驗

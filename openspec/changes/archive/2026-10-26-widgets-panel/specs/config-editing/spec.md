@@ -2,11 +2,12 @@
 
 ## MODIFIED Requirements
 
-### Requirement: 首次啟動建立初始設定
+### Requirement: 設定檔位置可由環境變數指定
 
-系統 SHALL 在首次啟動且設定檔不存在時，由專案目錄的範例檔（*.example.yaml）
-建立 services.yaml、bookmarks.yaml 與 widgets.yaml；已存在的檔案 MUST NOT 被
-範例檔覆寫。
+系統 SHALL 從 HOMEPAGE_CONFIG_PATH 讀取設定檔位置，未設定時使用專案目錄下的
+config。首次啟動且設定檔不存在時，系統 SHALL 由範例檔建立初始設定；已存在的
+檔案 MUST NOT 被範例檔覆寫。初始設定包含 services.yaml、bookmarks.yaml 與
+widgets.yaml。
 
 #### Scenario: 乾淨環境首次啟動
 - **WHEN** 設定路徑下沒有 services.yaml、bookmarks.yaml 與 widgets.yaml
