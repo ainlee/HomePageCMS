@@ -1047,6 +1047,7 @@ const cmsApp = createApp({
       loadServices();
       loadBookmarks();
       loadWidgets();
+      loadLayoutSettings();
       checkForUpdates();
     }
 
@@ -2504,6 +2505,7 @@ const cmsApp = createApp({
         loadServices();
         loadBookmarks();
         loadWidgets();
+        loadLayoutSettings();
         checkForUpdates();
       } catch (err) {
         showToast(t('toast.settingsSaveFailed', { msg: err.message }), 'error');
@@ -2599,6 +2601,7 @@ const cmsApp = createApp({
         loadServices();
         loadBookmarks();
         loadWidgets();
+        loadLayoutSettings();
         checkForUpdates();
       }
       // The colour schemes are needed for the appearance dialog and for knowing
