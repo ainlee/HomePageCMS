@@ -678,6 +678,10 @@
           <label>{{ t('group.name') }}</label>
           <input v-model="editingGroup.name" type="text" :placeholder="t('group.namePlaceholder')">
         </div>
+        <div class="form-group">
+          <label>{{ t('group.icon') }}</label>
+          <input v-model="editingGroup.icon" type="text" placeholder="mdi-robot / home-assistant.png">
+        </div>
         <div class="modal-actions">
           <button @click="showGroupModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
           <button @click="saveGroup" class="btn btn-primary">{{ t('common.confirm') }}</button>

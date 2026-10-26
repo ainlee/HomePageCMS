@@ -1421,25 +1421,33 @@ const cmsApp = createApp({
     function addGroup() {
       editingGroupId.value = null;
       editingGroup.name = '';
+      editingGroup.icon = '';
       showGroupModal.value = true;
     }
 
     function editGroup(group) {
       editingGroupId.value = group.id;
       editingGroup.name = group.name;
+      const layoutEntry = layoutGroups.value.find((g) => g.name === group.name);
+      editingGroup.icon = layoutEntry ? (layoutEntry.icon || '') : '';
       showGroupModal.value = true;
     }
 
     function saveGroup() {
       if (!editingGroup.name.trim()) { showToast(t('group.nameRequired'), 'error'); return; }
+      const newName = editingGroup.name.trim();
       if (editingGroupId.value) {
         const g = groups.value.find(g => g.id === editingGroupId.value);
-        if (g) g.name = editingGroup.name.trim();
+        if (g) {
+          const oldName = g.name;
+          g.name = newName;
+          const li = layoutGroups.value.findIndex((x) => x.name === oldName);
+          if (li >= 0) { layoutGroups.value[li].name = newName; layoutGroups.value[li].icon = editingGroup.icon.trim(); }
+          else if (editingGroup.icon.trim()) { layoutGroups.value.push({ name: newName, icon: editingGroup.icon.trim(), source: {} }); }
+        }
       } else {
-        groups.value.push({
-          id: uid(), name: editingGroup.name.trim(),
-          collapsed: false, items: []
-        });
+        groups.value.push({ id: uid(), name: newName, collapsed: false, items: [] });
+        if (editingGroup.icon.trim()) { layoutGroups.value.push({ name: newName, icon: editingGroup.icon.trim(), source: {} }); }
       }
       showGroupModal.value = false;
     }
