@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="vendor/mdi/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="style.css">
   <script src="vendor/ramp.js"></script>
+  <script src="widget-types.js"></script>
 </head>
 <body>
   <div id="app">
@@ -59,6 +60,9 @@
           <button @click="openAppearanceTab" class="tab-btn" :class="{ active: activeTab === 'appearance' }">
             <i class="mdi mdi-palette"></i> {{ t('tabs.appearance') }}
           </button>
+          <button @click="openLayoutTab" class="tab-btn" :class="{ active: activeTab === 'layout' }">
+            <i class="mdi mdi-view-grid"></i> {{ t('tabs.layout') }}
+          </button>
         </div>
           <button v-if="activeTab === 'services'" @click="addGroup" class="btn btn-small btn-primary">
             <i class="mdi mdi-plus"></i> {{ t('tabs.addGroup') }}
@@ -72,6 +76,11 @@
             <template v-if="appearanceDirty || customCssDirty">{{ t('appearance.unsaved') }}</template>
             <template v-else-if="appearanceReady">{{ t('appearance.savedState') }}</template>
             <template v-else>{{ t('appearance.loading') }}</template>
+          </span>
+          <span class="stats" v-if="activeTab === 'layout'">
+            <template v-if="layoutDirty">{{ t('layout.unsaved') }}</template>
+            <template v-else-if="layoutReady">{{ t('layout.savedState') }}</template>
+            <template v-else>{{ t('layout.loading') }}</template>
           </span>
         </div>
 
@@ -92,7 +101,6 @@
               <i class="mdi drag-handle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleGroup(group)"></i>
               <span class="group-name" @click="toggleGroup(group)">{{ group.name }}</span>
               <span class="group-badge">{{ group.items.length }}</span>
-              <span v-if="group.colSpan && group.colSpan > 1" class="group-colspan">col-{{ group.colSpan }}</span>
               <div class="group-actions">
                 <button @click.stop="editGroup(group)" class="btn btn-icon" :title="t('group.edit')">
                   <i class="mdi mdi-pencil"></i>
@@ -111,15 +119,18 @@
                 <div class="item-row">
                   <i class="mdi mdi-drag item-drag" @pointerdown="startCardDrag($event, group, item)"></i>
                   <div class="item-icon-wrap">
-                    <i v-if="item.iconType === 'mdi' && item.icon" class="mdi item-icon" :class="item.icon"></i>
-                    <img v-else-if="item.icon" :src="item.icon" class="item-icon-img" @error="item.icon = ''">
+                    <i v-if="isMdiIcon(item.icon)" class="mdi item-icon" :class="mdiClassOf(item.icon)"></i>
+                    <img v-else-if="iconPreviewUrl(item.icon, item.iconType)" :src="iconPreviewUrl(item.icon, item.iconType)" class="item-icon-img">
                     <i v-else class="mdi mdi-help-circle item-icon-none"></i>
                   </div>
                   <div class="item-info">
                     <span class="item-name">{{ item.name }}</span>
                     <span class="item-desc">{{ item.description }}</span>
                   </div>
-                  <span class="item-widget-badge" :class="'badge-' + item.widgetType">{{ widgetTypeLabel(item.widgetType) }}</span>
+                  <span v-for="(wt, wti) in itemWidgetBadges(item)" :key="'w' + wti"
+                        class="item-widget-badge" :class="'badge-generic'">
+                    {{ wt }}
+                  </span>
                   <div class="item-actions">
                     <button @click="editItem(group, item)" class="btn btn-icon" :title="t('item.edit')">
                       <i class="mdi mdi-pencil"></i>
@@ -392,6 +403,197 @@
               </div>
             </div>
           </template>
+
+        <!-- Layout panel -->
+        <template v-if="activeTab === 'layout'">
+          <div class="layout-panel">
+            <div class="layout-head">
+              <p class="layout-hint">{{ t('layout.hint') }}</p>
+              <button @click="saveLayoutSettings" class="btn btn-small btn-primary" :disabled="!layoutDirty || saving">
+                <i class="mdi mdi-content-save"></i> {{ t('layout.save') }}
+              </button>
+              <button @click="loadLayoutSettings" class="btn btn-icon btn-secondary" :title="t('layout.reload')">
+                <i class="mdi mdi-refresh"></i>
+              </button>
+            </div>
+
+            <div class="layout-section">
+              <div class="layout-section-head">
+                <h3 class="layout-title">{{ t('layout.groupsTitle') }}</h3>
+                <button @click="addLayoutGroup" class="btn btn-small btn-secondary">
+                  <i class="mdi mdi-plus"></i> {{ t('layout.addGroup') }}
+                </button>
+              </div>
+              <div v-for="(lg, li) in layoutGroups" :key="lg.name" class="layout-group-row">
+                <div class="layout-group-meta">
+                  <i v-if="lg.icon" class="mdi layout-group-icon" :class="lg.icon"></i>
+                  <span class="layout-group-name">{{ lg.name }}</span>
+                  <span v-if="!knownGroupNames.has(lg.name)" class="layout-group-tag layout-orphan">
+                    <i class="mdi mdi-link-off"></i> {{ t('layout.orphan') }}
+                  </span>
+                  <span v-if="lg.tab" class="layout-group-tag">
+                    <i class="mdi mdi-tab"></i> {{ lg.tab }}
+                  </span>
+                  <span v-if="lg.style" class="layout-group-tag">
+                    <i class="mdi mdi-view-split-horizontal"></i> {{ lg.style }}{{ lg.columns ? ' × ' + lg.columns : '' }}
+                  </span>
+                </div>
+                <div class="layout-group-actions">
+                  <button @click="editLayoutGroup(lg, li)" class="btn btn-icon" :title="t('layout.editGroup')">
+                    <i class="mdi mdi-pencil"></i>
+                  </button>
+                  <button @click="deleteLayoutGroup(li)" class="btn btn-icon btn-danger" :title="t('layout.deleteGroup')">
+                    <i class="mdi mdi-delete"></i>
+                  </button>
+                </div>
+              </div>
+              <p v-if="!layoutGroups.length" class="layout-empty">{{ t('layout.noGroups') }}</p>
+            </div>
+
+            <div class="layout-section">
+              <h3 class="layout-title">{{ t('layout.globalTitle') }}</h3>
+              <div class="form-grid layout-grid">
+                <div class="form-group">
+                  <label>{{ t('layout.title') }}</label>
+                  <input v-model="layoutValues.title" type="text" :placeholder="t('layout.notSet')">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.description') }}</label>
+                  <input v-model="layoutValues.description" type="text" :placeholder="t('layout.notSet')">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.language') }}</label>
+                  <input v-model="layoutValues.language" type="text" placeholder="zh-Hant">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.target') }}</label>
+                  <select v-model="layoutValues.target">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="_blank">_blank</option>
+                    <option value="_self">_self</option>
+                    <option value="_top">_top</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.fullWidth') }}</label>
+                  <select v-model="layoutValues.fullWidth">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="true">{{ t('layout.on') }}</option>
+                    <option value="false">{{ t('layout.off') }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.statusStyle') }}</label>
+                  <select v-model="layoutValues.statusStyle">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="dot">dot</option>
+                    <option value="basic">basic</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.showStats') }}</label>
+                  <select v-model="layoutValues.showStats">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="true">{{ t('layout.on') }}</option>
+                    <option value="false">{{ t('layout.off') }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.disableCollapse') }}</label>
+                  <select v-model="layoutValues.disableCollapse">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="true">{{ t('layout.on') }}</option>
+                    <option value="false">{{ t('layout.off') }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.maxGroupColumns') }}</label>
+                  <input v-model="layoutValues.maxGroupColumns" type="text" inputmode="numeric" placeholder="5-8">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.maxBookmarkGroupColumns') }}</label>
+                  <input v-model="layoutValues.maxBookmarkGroupColumns" type="text" inputmode="numeric" placeholder="5-8">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.bookmarksStyle') }}</label>
+                  <select v-model="layoutValues.bookmarksStyle">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="default">default</option>
+                    <option value="icons">icons</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.groupsInitiallyCollapsed') }}</label>
+                  <select v-model="layoutValues.groupsInitiallyCollapsed">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="true">{{ t('layout.on') }}</option>
+                    <option value="false">{{ t('layout.off') }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.useEqualHeights') }}</label>
+                  <select v-model="layoutValues.useEqualHeights">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="true">{{ t('layout.on') }}</option>
+                    <option value="false">{{ t('layout.off') }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.startUrl') }}</label>
+                  <input v-model="layoutValues.startUrl" type="text" :placeholder="t('layout.notSet')">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.favicon') }}</label>
+                  <input v-model="layoutValues.favicon" type="text" :placeholder="t('layout.notSet')">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.instanceName') }}</label>
+                  <input v-model="layoutValues.instanceName" type="text" :placeholder="t('layout.notSet')">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.base') }}</label>
+                  <input v-model="layoutValues.base" type="text" placeholder="http://host.local/homepage">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.logpath') }}</label>
+                  <input v-model="layoutValues.logpath" type="text" :placeholder="t('layout.notSet')">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.hideVersion') }}</label>
+                  <select v-model="layoutValues.hideVersion">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="true">{{ t('layout.on') }}</option>
+                    <option value="false">{{ t('layout.off') }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.disableUpdateCheck') }}</label>
+                  <select v-model="layoutValues.disableUpdateCheck">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="true">{{ t('layout.on') }}</option>
+                    <option value="false">{{ t('layout.off') }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.hideErrors') }}</label>
+                  <select v-model="layoutValues.hideErrors">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="true">{{ t('layout.on') }}</option>
+                    <option value="false">{{ t('layout.off') }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('layout.disableIndexing') }}</label>
+                  <select v-model="layoutValues.disableIndexing">
+                    <option value="">{{ t('layout.notSet') }}</option>
+                    <option value="true">{{ t('layout.on') }}</option>
+                    <option value="false">{{ t('layout.off') }}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
         </div>      </div>
 
       <div v-show="showPreview" class="resizer" 
@@ -431,18 +633,70 @@
           <label>{{ t('group.name') }}</label>
           <input v-model="editingGroup.name" type="text" :placeholder="t('group.namePlaceholder')">
         </div>
-        <div class="form-group">
-          <label>{{ t('group.colSpan') }}</label>
-          <select v-model.number="editingGroup.colSpan">
-            <option :value="1">{{ t('group.colSpan1') }}</option>
-            <option :value="2">{{ t('group.colSpan2') }}</option>
-            <option :value="3">{{ t('group.colSpan3') }}</option>
-            <option :value="4">{{ t('group.colSpan4') }}</option>
-          </select>
-        </div>
         <div class="modal-actions">
           <button @click="showGroupModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
           <button @click="saveGroup" class="btn btn-primary">{{ t('common.confirm') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layout Group Modal -->
+    <div v-if="showLayoutGroupModal" class="modal-overlay" @click.self="closeOnOverlayClick($event, () => { showLayoutGroupModal = false })">
+      <div class="modal modal-wide">
+        <h2><i class="mdi mdi-view-grid-edit"></i> {{ editingLayoutGroupIndex === null ? t('layout.addGroup') : t('layout.editGroup') }}</h2>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>{{ t('layout.groupName') }}</label>
+            <input v-model="editingLayoutGroup.name" type="text" :placeholder="t('layout.groupNameHint')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('layout.tab') }}</label>
+            <input v-model="editingLayoutGroup.tab" type="text" :placeholder="t('layout.tabHint')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('layout.style') }}</label>
+            <select v-model="editingLayoutGroup.style">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="columns">columns</option>
+              <option value="row">row</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('layout.columns') }}</label>
+            <input v-model="editingLayoutGroup.columns" type="text" inputmode="numeric" :placeholder="t('layout.columnsHint')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('layout.icon') }}</label>
+            <input v-model="editingLayoutGroup.icon" type="text" placeholder="mdi-robot / home-assistant.png">
+          </div>
+          <div class="form-group">
+            <label>{{ t('layout.header') }}</label>
+            <select v-model="editingLayoutGroup.header">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="true">{{ t('layout.on') }}</option>
+              <option value="false">{{ t('layout.off') }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('layout.initiallyCollapsed') }}</label>
+            <select v-model="editingLayoutGroup.initiallyCollapsed">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="true">{{ t('layout.on') }}</option>
+              <option value="false">{{ t('layout.off') }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('layout.useEqualHeights') }}</label>
+            <select v-model="editingLayoutGroup.useEqualHeights">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="true">{{ t('layout.on') }}</option>
+              <option value="false">{{ t('layout.off') }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button @click="showLayoutGroupModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
+          <button @click="saveLayoutGroup" class="btn btn-primary">{{ t('common.confirm') }}</button>
         </div>
       </div>
     </div>
@@ -483,23 +737,86 @@
             <div class="icon-input-wrap">
               <input v-model="editingItem.icon" type="text" :placeholder="editingItem.iconType === 'mdi' ? t('item.iconValueMdi') : t('item.iconValueUrl')">
               <div class="icon-preview" v-if="editingItem.icon">
-                <i v-if="editingItem.iconType === 'mdi'" class="mdi" :class="editingItem.icon"></i>
-                <img v-else :src="editingItem.icon" @error="editingItem.icon = ''">
+                <i v-if="isMdiIcon(editingItem.icon)" class="mdi icon-preview-glyph" :class="mdiClassOf(editingItem.icon)"></i>
+                <img v-else-if="iconPreviewUrl(editingItem.icon, editingItem.iconType)"
+                     :src="iconPreviewUrl(editingItem.icon, editingItem.iconType)"
+                     class="icon-preview-img">
+              </div>
+            </div>
+          </div>
+          <!-- Multi-widget editor: one block per widget the service carries. -->
+          <div class="form-group form-wide">
+            <label class="form-section-label">
+              {{ t('item.widgets') }}
+              <button @click="addWidgetRow" class="btn btn-small btn-secondary" type="button">
+                <i class="mdi mdi-plus"></i> {{ t('item.addWidget') }}
+              </button>
+            </label>
+            <div v-if="!editingItem.widgets.length" class="form-note">{{ t('item.noWidgets') }}</div>
+            <div v-for="(w, wi) in editingItem.widgets" :key="wi" class="widget-row">
+              <div class="widget-row-head">
+                <select v-model="w.type" class="widget-type">
+                  <option value="">{{ t('item.widgetNone') }}</option>
+                  <option v-for="tt in widgetTypes" :key="tt" :value="tt">{{ widgetTypeLabel(tt) }}</option>
+                  <!-- A type this editor does not know keeps its value instead of
+                       silently becoming "none" on a save. -->
+                  <option v-if="w.type && !widgetTypes.includes(w.type)" :value="w.type">{{ widgetTypeLabel(w.type) }}</option>
+                </select>
+                <button @click="removeWidgetRow(wi)" class="btn btn-icon btn-danger" type="button" :title="t('item.removeWidget')">
+                  <i class="mdi mdi-delete"></i>
+                </button>
+              </div>
+              <div class="widget-row-fields">
+                <div class="form-group">
+                  <label>{{ t('item.wUrl') }}</label>
+                  <input v-model="w.url" type="text" :placeholder="widgetValueHint(w.type)">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('item.wKey') }}</label>
+                  <input v-model="w.key" type="text">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('item.wContainer') }}</label>
+                  <input v-model="w.container" type="text">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('item.wHost') }}</label>
+                  <input v-model="w.host" type="text">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('item.wFields') }}</label>
+                  <input v-model="w.fields" type="text" :placeholder="t('item.wFieldsPlaceholder')">
+                </div>
+                <div class="form-group">
+                  <label>{{ t('item.wHideErrors') }}</label>
+                  <select v-model="w.hideErrors">
+                    <option value="">{{ t('item.statusStyleUnset') }}</option>
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
           <div class="form-group">
-            <label>{{ t('item.widgetType') }}</label>
-            <select v-model="editingItem.widgetType">
-              <option value="none">{{ t('item.widgetNone') }}</option>
-              <option value="container">{{ t('item.widgetContainer') }}</option>
-              <option value="ping">{{ t('item.widgetPing') }}</option>
-              <option value="customapi">{{ t('item.widgetCustomApi') }}</option>
+            <label>{{ t('item.siteMonitor') }}</label>
+            <input v-model="editingItem.siteMonitor" type="text" :placeholder="t('item.siteMonitorPlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.statusStyle') }}</label>
+            <select v-model="editingItem.statusStyle">
+              <option value="">{{ t('item.statusStyleUnset') }}</option>
+              <option value="dot">dot</option>
+              <option value="basic">basic</option>
             </select>
           </div>
           <div class="form-group">
-            <label>{{ widgetValueLabel }}</label>
-            <input v-model="editingItem.widgetValue" type="text" :placeholder="widgetValuePlaceholder">
+            <label>{{ t('item.showStats') }}</label>
+            <select v-model="editingItem.showStats">
+              <option value="">{{ t('item.statusStyleUnset') }}</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
           </div>
           <div class="form-group">
             <label>{{ t('item.server') }}</label>
@@ -520,9 +837,6 @@
           <div class="form-group">
             <label>{{ t('item.podSelector') }}</label>
             <input v-model="editingItem.podSelector" type="text" :placeholder="t('item.podSelectorPlaceholder')">
-          </div>
-          <div v-if="editingItem._widgetsExtra" class="form-group form-note">
-            <span>{{ t('item.widgetsExtraHint') }}</span>
           </div>
         </div>
         <div class="modal-actions">
@@ -576,6 +890,15 @@
           <label>{{ t('bookmark.icon') }}</label>
           <input id="bookmark-icon" v-model="editingBookmarkItem.icon" type="text"
                  :placeholder="t('bookmark.iconPlaceholder')" @keyup.enter="saveBookmarkItem">
+        </div>
+        <div class="form-group">
+          <label>{{ t('bookmark.target') }}</label>
+          <select v-model="editingBookmarkItem.target">
+            <option value="">{{ t('bookmark.targetUnset') }}</option>
+            <option value="_blank">{{ t('item.targetBlank') }}</option>
+            <option value="_self">{{ t('item.targetSelf') }}</option>
+            <option value="_top">{{ t('item.targetTop') }}</option>
+          </select>
         </div>
         <div class="modal-actions">
           <button @click="showBookmarkItemModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>

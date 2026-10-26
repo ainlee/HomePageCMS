@@ -8,6 +8,7 @@ const { execFile, spawn } = require('child_process');
 const i18n = require('./lib/i18n');
 const themeLib = require('./lib/themes');
 const appearanceLib = require('./lib/homepage-appearance');
+const layoutLib = require('./lib/homepage-layout');
 const customCssLib = require('./lib/custom-css');
 const { parseIni } = require('./lib/ini');
 // The version and the repository come from the package file, so the version in the
@@ -297,6 +298,11 @@ function bookmarksFile() {
   return path.join(configDirSetting().value, 'bookmarks.yaml');
 }
 
+// Homepage's information widgets, shown in a strip at the top of the dashboard.
+function widgetsFile() {
+  return path.join(configDirSetting().value, 'widgets.yaml');
+}
+
 // Homepage's own settings file. It holds the appearance of the dashboard, and the
 // editor writes the visual fields of it.
 function homepageSettingsFile() {
@@ -455,7 +461,7 @@ function fileHash(file) {
 function ensureConfigFiles() {
   const configDir = configDirSetting().value;
   if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
-  for (const name of ['services', 'bookmarks']) {
+  for (const name of ['services', 'bookmarks', 'widgets']) {
     const target = path.join(configDir, name + '.yaml');
     const example = path.join(PROJECT_DIR, 'config', name + '.example.yaml');
     if (!fs.existsSync(target) && fs.existsSync(example)) {
@@ -606,6 +612,37 @@ appRouter.put('/api/bookmarks', (req, res) => {
   }
 });
 
+// GET /api/widgets - read widgets.yaml
+appRouter.get('/api/widgets', (req, res) => {
+  try {
+    const file = widgetsFile();
+    if (!fs.existsSync(file)) {
+      return res.json({ success: true, data: [], raw: '', hash: null });
+    }
+    const content = fs.readFileSync(file, 'utf8');
+    const data = yaml.load(content);
+    res.json({ success: true, data, raw: content, hash: fileHash(file) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/widgets - write widgets.yaml with backup
+appRouter.put('/api/widgets', (req, res) => {
+  try {
+    const file = widgetsFile();
+    const conflict = checkUnchanged(file, req.body?.hash);
+    if (conflict) return res.status(409).json({ success: false, error: conflict });
+    const { raw } = req.body;
+
+    copyBackup(file, 'widgets');
+    writeFileSafe(file, raw);
+    res.json({ success: true, hash: fileHash(file) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Homepage's settings.yaml has a comment header that points at the documentation.
 // It is kept as it is, so a file the user wrote by hand does not lose its comments.
 const HOMEPAGE_SETTINGS_HEADER =
@@ -693,6 +730,83 @@ appRouter.put('/api/homepage-settings', (req, res) => {
     res.json({
       success: true,
       data: { values: appearanceLib.readAppearance(next) },
+      hash: fileHash(file)
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/homepage-layout - the layout block and the global switches of settings.yaml
+appRouter.get('/api/homepage-layout', (req, res) => {
+  try {
+    const file = homepageSettingsFile();
+    const exists = fs.existsSync(file);
+    const content = exists ? fs.readFileSync(file, 'utf8') : '';
+    let settings = {};
+    if (exists) {
+      const parsed = yaml.load(content);
+      if (parsed && typeof parsed === 'object') settings = parsed;
+    }
+    res.json({
+      success: true,
+      data: {
+        groups: layoutLib.readLayoutGroups(settings),
+        values: layoutLib.readGlobalValues(settings),
+        choices: {
+          style: layoutLib.STYLE_CHOICES,
+          target: ['_blank', '_self', '_top'],
+          bookmarksStyle: ['default', 'icons'],
+          statusStyle: ['dot', 'basic']
+        },
+        exists,
+        path: file
+      },
+      hash: fileHash(file)
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/homepage-layout - write the layout block and the global switches back
+appRouter.put('/api/homepage-layout', (req, res) => {
+  try {
+    const file = homepageSettingsFile();
+    const conflict = checkUnchanged(file, req.body && req.body.hash);
+    if (conflict) return res.status(409).json({ success: false, error: conflict });
+    const body = req.body || {};
+    const values = body.values || {};
+    const groups = Array.isArray(body.groups) ? body.groups : [];
+    for (const group of groups) {
+      if (!group || typeof group.name !== 'string') {
+        return res.status(400).json({ success: false, error: '版面群組名稱不正確' });
+      }
+      if (group.name.length > 120 || /[\r\n]/.test(group.name)) {
+        return res.status(400).json({ success: false, error: '版面群組名稱不正確' });
+      }
+    }
+
+    const exists = fs.existsSync(file);
+    const content = exists ? fs.readFileSync(file, 'utf8') : '';
+    let settings = {};
+    if (exists) {
+      const parsed = yaml.load(content);
+      if (parsed && typeof parsed === 'object') settings = parsed;
+    }
+    const next = layoutLib.applyLayoutSettings(settings, values, groups);
+    const header = settingsHeader(content) || HOMEPAGE_SETTINGS_HEADER.trimEnd();
+    const output = header + '\n\n' + yaml.dump(next);
+
+    if (exists && content === output) {
+      return res.json({ success: true, data: { groups: layoutLib.readLayoutGroups(next), values: layoutLib.readGlobalValues(next), unchanged: true }, hash: fileHash(file) });
+    }
+
+    copyBackup(file, 'homepage-settings');
+    writeFileSafe(file, output);
+    res.json({
+      success: true,
+      data: { groups: layoutLib.readLayoutGroups(next), values: layoutLib.readGlobalValues(next) },
       hash: fileHash(file)
     });
   } catch (err) {

@@ -22,15 +22,18 @@ check('weight stays numeric', b.weight === 100, JSON.stringify(b.weight));
 check('namespace/app/podSelector round-trip', b.namespace === 'ns1' && b.app === 'myapp' && b.podSelector === 'app=myapp');
 check('widgets array preserved', Array.isArray(b.widgets) && b.widgets.length === 1 && b.widgets[0].type === 'customapi', JSON.stringify(b.widgets));
 
-// bookmark with description + icon
+// bookmark with description + icon + target
 const bm = {}; setOrDelete(bm, 'abbr', 'GH'); setOrDelete(bm, 'href', 'https://github.com/');
 setOrDelete(bm, 'description', 'code'); setOrDelete(bm, 'icon', 'mdi-github');
+setOrDelete(bm, 'target', '_blank');
 const bmDoc = [{ Dev: [{ Github: [bm] }] }];
 const bmBack = yaml.load(yaml.dump(bmDoc));
 const bb = bmBack[0].Dev[0].Github[0];
 check('bookmark description round-trips', bb.description === 'code');
 check('bookmark icon round-trips', bb.icon === 'mdi-github');
 check('empty bookmark description is dropped', (() => { const o = {}; setOrDelete(o, 'description', ''); return !('description' in o); })());
+check('bookmark target round-trips', bb.target === '_blank');
+check('an empty bookmark target is dropped', (() => { const o = {}; setOrDelete(o, 'target', ''); return !('target' in o); })());
 
 console.log('');
 if (failures.length) { console.log(failures.length + ' checks failed'); process.exit(1); }

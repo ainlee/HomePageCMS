@@ -248,14 +248,7 @@ body {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 10px;
-}
-.group-colspan {
-  font-size: 11px;
-  color: var(--text-dim);
-  background: var(--bg);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
+ }
 
 .group-actions { display: flex; gap: 4px; }
 
@@ -354,7 +347,47 @@ body {
 .badge-ping { background: color-mix(in srgb, var(--info) 15%, transparent); color: var(--info); }
 .badge-customapi { background: color-mix(in srgb, var(--api) 15%, transparent); color: var(--api); }
 .badge-none { background: transparent; color: var(--text-dim); }
+.badge-generic { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
 
+.form-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+/* One block per widget the service carries. */
+.widget-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+
+.widget-row-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.widget-row-head .widget-type { flex: 1; }
+
+.widget-row-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+
+/* The multi-widget editor spans the whole dialog, not just one grid column. */
+.form-wide { grid-column: 1 / -1; }
+.form-wide .form-note { margin-top: 4px; }
+
+/* The live preview of a prefixed / named icon in the dialog. */
+.icon-preview-img { width: 100%; height: 100%; object-fit: contain; }
+.icon-preview-glyph { font-size: 24px; line-height: 1; }
 .item-actions { display: flex; gap: 2px; flex-shrink: 0; }
 
 .add-item-btn { width: 100%; justify-content: center; border-style: dashed; }
@@ -961,6 +994,107 @@ body {
 
 .css-editor:focus { border-color: var(--accent); }
 
+/* Homepage layout (settings.yaml: layout block + global switches) */
+.layout-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.layout-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.layout-hint {
+  flex: 1;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.layout-section { margin-bottom: 18px; }
+.layout-section:last-child { margin-bottom: 0; }
+
+.layout-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.layout-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.layout-section-head .layout-title { margin-bottom: 0; }
+
+.layout-group-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+
+.layout-group-meta {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.layout-group-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.layout-group-icon {
+  font-size: 18px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.layout-group-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-hover);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.layout-group-tag.layout-orphan {
+  color: var(--danger);
+}
+
+.layout-group-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.layout-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 4px 0;
+}
+
+.layout-grid .form-group:first-child { grid-column: auto; }
+
 .icon-input-wrap { display: flex; gap: 8px; align-items: center; }
 .icon-input-wrap input { flex: 1; }
 .icon-preview {
@@ -1454,6 +1588,21 @@ body {
 
   .font-fields {
     grid-template-columns: 1fr;
+  }
+
+  .layout-panel { padding: 12px; }
+  .layout-group-row {
+    flex-wrap: wrap;
+  }
+  .layout-group-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  /* The global switches drop to one column on a phone, so a row of controls
+     never overflows. */
+  .layout-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
   }
 }
 

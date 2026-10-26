@@ -22,6 +22,7 @@ const cmsApp = createApp({
     // State
     const groups = ref([]);
     const bookmarkGroups = ref([]);
+    const widgets = ref([]);
     const activeTab = ref('services');
     const showPreview = ref(savedLayout.showPreview !== false);
     // The preview target comes from the server (settings file > env var > unset), so no
@@ -42,6 +43,7 @@ const cmsApp = createApp({
     const showItemModal = ref(false);
     const showBookmarkGroupModal = ref(false);
     const showBookmarkItemModal = ref(false);
+    const showWidgetModal = ref(false);
     const showMoveModal = ref(false);
     const showBackups = ref(false);
     const showSettings = ref(false);
@@ -49,6 +51,7 @@ const cmsApp = createApp({
     const editingItemId = ref(null);
     const editingBookmarkGroupId = ref(null);
     const editingBookmarkItemId = ref(null);
+    const editingWidgetIndex = ref(null);
     const movingItem = ref(null);
     const movingFromGroup = ref(null);
     const dragOverGroup = ref(null);
@@ -60,6 +63,7 @@ const cmsApp = createApp({
     // back so the server can refuse to overwrite a file that changed in the meantime.
     const servicesHash = ref(null);
     const bookmarksHash = ref(null);
+    const widgetsHash = ref(null);
     // Access password, when the server asks for one. Kept in the browser so it is
     // typed once per device.
     const apiPassword = ref(localStorage.getItem('hcms-password') || '');
@@ -463,14 +467,23 @@ const cmsApp = createApp({
     // first visit and stays until it is saved or explicitly skipped.
     const isFirstRun = ref(false);
 
-    const editingGroup = reactive({ name: '', colSpan: 1 });
+    const editingGroup = reactive({ name: '' });
     const editingItem = reactive({
       name: '', href: '', description: '', target: '',
-      icon: '', iconType: 'mdi', widgetType: 'none', widgetValue: '',
-      server: '', weight: '', namespace: '', app: '', podSelector: ''
+      icon: '', iconType: 'mdi',
+      siteMonitor: '', statusStyle: '', showStats: '',
+      server: '', weight: '', namespace: '', app: '', podSelector: '',
+      widgets: []
     });
     const editingBookmarkGroup = reactive({ name: '' });
-    const editingBookmarkItem = reactive({ name: '', href: '', abbr: '', description: '', icon: '' });
+    const editingBookmarkItem = reactive({ name: '', href: '', abbr: '', description: '', icon: '', target: '' });
+    // One information widget (widgets.yaml): its type and the options the
+    // editor models. source keeps the raw object so unmodelled options
+    // survive a save.
+    const editingWidget = reactive({
+      type: '', label: '', url: '', key: '', provider: '', target: '',
+      latitude: '', longitude: '', cache: '', href: ''
+    });
     // The group an edited bookmark belongs to. It is not a form field, so it stays
     // out of the reactive object the dialog binds to.
     let bookmarkItemGroupId = null;
@@ -802,23 +815,61 @@ const cmsApp = createApp({
       requestAnimationFrame(applyViewport);
     }
 
-    const widgetValueLabel = computed(() => {
-      switch (editingItem.widgetType) {
-        case 'container': return t('item.widgetValueContainer');
+    // The full list of widget types upstream knows, so the dialog can offer
+    // every integration instead of only the few the editor models.
+    const widgetTypes = ref((window.__WIDGET_TYPES__ || []).slice());
+
+    // A known type shows its own name; an unmodelled one (a newer Homepage
+    // type this editor does not know) shows the raw value with a marker.
+    function widgetTypeLabel(type) {
+      if (!type) return t('item.widgetNone');
+      if (widgetTypes.value.includes(type)) return type;
+      return type + ' *';
+    }
+
+    // The value one should type for a widget type, so the dialog can hint at
+    // the right field.
+    function widgetValueHint(type) {
+      switch (type) {
+        case 'docker': return t('item.widgetValueContainer');
         case 'ping': return t('item.widgetValuePing');
         case 'customapi': return t('item.widgetValueCustomApi');
         default: return t('item.widgetValue');
       }
-    });
+    }
 
-    const widgetValuePlaceholder = computed(() => {
-      switch (editingItem.widgetType) {
-        case 'container': return t('item.widgetPlaceholderContainer');
-        case 'ping': return t('item.widgetPlaceholderPing');
-        case 'customapi': return t('item.widgetPlaceholderCustomApi');
-        default: return '';
-      }
-    });
+    // The icon helpers for a live preview. Upstream resolves prefixed icons
+    // from a CDN (mdi-XX, si-XX, sh-XX, or a dashboard-icons name); a hex color
+    // suffix on an mdi / si icon recolors it.
+    function isMdiIcon(icon) {
+      const v = String(icon || '').trim();
+      return v.startsWith('mdi-') && !/\.(png|webp|svg)$/i.test(v);
+    }
+
+    // The mdi class, without any color suffix: mdi-test-#f0d453 -> mdi-test.
+    function mdiClassOf(icon) {
+      const v = String(icon || '').trim();
+      const m = v.match(/^mdi-[\w-]+?(?:-#([a-fA-F0-9]{6}))?$/);
+      return m ? 'mdi-' + m[0].replace(/^mdi-/, '').replace(/-#[a-fA-F0-9]{6}$/, '') : v;
+    }
+
+    // The URL to preview an icon value as an image: a real URL, or the CDN
+    // address of a prefixed / named icon. '' when nothing to show.
+    function iconPreviewUrl(icon, iconType) {
+      const v = String(icon || '').trim();
+      if (!v) return '';
+      if (iconType === 'url' || v.startsWith('http') || v.startsWith('//') || v.startsWith('/')) return v;
+      if (isMdiIcon(v)) return '';
+      const colorMatch = v.match(/#([a-fA-F0-9]{6})$/);
+      let name = colorMatch ? v.slice(0, -colorMatch[0].length) : v;
+      const dash = name.indexOf('-');
+      const prefix = dash > 0 ? name.slice(0, dash) : '';
+      const base = dash > 0 ? name.slice(dash + 1) : name;
+      const stripExt = (s) => s.replace(/\.(png|webp|svg)$/i, '');
+      if (prefix === 'si') return 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/' + stripExt(base).toLowerCase() + '.svg';
+      if (prefix === 'sh') return 'https://cdn.jsdelivr.net/gh/selfhst/icons@main/png/' + stripExt(base) + '.png';
+      return 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/' + stripExt(base) + '.png';
+    }
 
     // Helpers
     function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -830,14 +881,23 @@ const cmsApp = createApp({
       setTimeout(() => { toast.show = false; }, 3000);
     }
 
-    function widgetTypeLabel(type) {
-      const map = {
-        container: t('item.badgeContainer'),
-        ping: t('item.badgePing'),
-        customapi: t('item.badgeCustomApi'),
-        none: t('item.badgeNone')
-      };
-      return map[type] || t('item.badgeNone');
+    // The widget types a card shows as badges, the first three plus a count
+    // of the rest.
+    function itemWidgetBadges(item) {
+      const types = (item.widgets || []).map((w) => w && w.type).filter(Boolean);
+      if (!types.length) return null;
+      const shown = types.slice(0, 3);
+      const extra = types.length - shown.length;
+      return extra > 0 ? [...shown, '+' + extra] : shown;
+    }
+
+    // The multi-widget editor inside the item dialog: add / remove a row.
+    function addWidgetRow() {
+      editingItem.widgets.push({ ...blankWidget() });
+    }
+
+    function removeWidgetRow(index) {
+      editingItem.widgets.splice(index, 1);
     }
 
     // Load data
@@ -891,6 +951,7 @@ const cmsApp = createApp({
               href: conf.href || '',
               description: conf.description || '',
               icon: conf.icon || '',
+              target: conf.target || '',
               source: conf
             };
           })
@@ -909,6 +970,9 @@ const cmsApp = createApp({
     const BOOKMARKS_HEADER =
       '---\n# For configuration options and examples, please see:\n' +
       '# https://gethomepage.dev/configs/bookmarks\n\n';
+    const WIDGETS_HEADER =
+      '---\n# For configuration options and examples, please see:\n' +
+      '# https://gethomepage.dev/configs/info-widgets/\n\n';
 
     function setOrDelete(obj, key, value) {
       if (value) obj[key] = value; else delete obj[key];
@@ -1003,7 +1067,6 @@ const cmsApp = createApp({
           name,
           sourceName: name,
           source: groupObj,
-          colSpan: Number(groupObj['col-span']) || 1,
           collapsed: false,
           items: items.map(item => parseServiceItem(Object.keys(item)[0], item[Object.keys(item)[0]]))
         };
@@ -1015,16 +1078,16 @@ const cmsApp = createApp({
         // A nested group (upstream allows groups inside groups). The editor cannot
         // model it, so it is kept exactly as it was.
         return { id: uid(), name: itemName, href: '', description: '', target: '',
-          icon: '', iconType: 'mdi', widgetType: 'none', widgetValue: '',
+          icon: '', iconType: 'mdi',
           server: '', weight: '', namespace: '', app: '', podSelector: '',
-          widgetsExtra: null,
-          widgetDialect: 'none', nested: true, source: conf };
+          siteMonitor: '', statusStyle: '', showStats: '',
+          widgets: [], nested: true, source: conf };
       }
       const config = conf && typeof conf === 'object' ? conf : {};
-      const widget = readWidget(config);
-      let iconType = 'mdi';
-      let icon = config.icon || '';
-      if (icon && !icon.startsWith('mdi-') && icon.startsWith('http')) iconType = 'url';
+      const icon = config.icon || '';
+      // A URL icon is previewed as an image; everything else (mdi-, si-, sh-,
+      // dashboard-icons names) is previewed as a class / best-effort.
+      const iconType = (icon.startsWith('http') || icon.startsWith('//')) ? 'url' : 'mdi';
       return {
         id: uid(),
         name: itemName,
@@ -1032,62 +1095,113 @@ const cmsApp = createApp({
         description: config.description || '',
         target: config.target || '',
         icon, iconType,
-        widgetType: widget.type, widgetValue: widget.value, widgetDialect: widget.dialect,
         server: config.server || '',
         weight: (config.weight ?? '') === '' ? '' : String(config.weight),
         namespace: config.namespace || '',
         app: config.app || '',
         podSelector: config.podSelector || '',
-        widgetsExtra: Array.isArray(config.widgets) ? config.widgets : null,
+        siteMonitor: config.siteMonitor || '',
+        statusStyle: config.statusStyle || '',
+        showStats: config.showStats === true ? 'true' : config.showStats === false ? 'false' : '',
+        widgets: normalizeWidgets(config),
         nested: false,
         source: config
       };
     }
 
-    // Reads the status widget out of a service, whichever shape the file uses:
-    // upstream's `widget` object, the legacy service-level `customapi` field, or the
-    // `container` / `ping` shorthands.
-    function readWidget(conf) {
-      const w = conf.widget;
-      if (w && typeof w === 'object') {
-        if (w.type === 'customapi') return { type: 'customapi', value: String(w.url || ''), dialect: 'widget' };
-        if (w.type === 'ping') return { type: 'ping', value: String(w.host || w.url || ''), dialect: 'widget' };
-        if (w.type === 'docker') return { type: 'container', value: String(w.container || ''), dialect: 'widget' };
-      }
-      if (conf.customapi) return { type: 'customapi', value: String(conf.customapi), dialect: 'legacy' };
-      if (conf.container) return { type: 'container', value: String(conf.container), dialect: 'shorthand' };
-      if (conf.ping) return { type: 'ping', value: String(conf.ping), dialect: 'shorthand' };
-      return { type: 'none', value: '', dialect: 'none' };
+    // A widget entry, normalised for the dialog. `source` keeps the raw object
+    // so the keys the editor does not model (headers, highlight, ...) survive a
+    // save. `dialect` records which shape the value came from, so writing back
+    // keeps the file's original style.
+    const WIDGET_FIELDS = ['url', 'key', 'host', 'container', 'fields', 'hideErrors'];
+    function blankWidget() {
+      return { type: '', url: '', key: '', host: '', container: '', fields: '', hideErrors: '', source: {}, dialect: 'widget' };
+    }
+    function normalizeWidget(raw, dialect) {
+      const o = raw && typeof raw === 'object' ? raw : {};
+      return {
+        type: o.type ? String(o.type) : '',
+        url: o.url != null ? String(o.url) : '',
+        key: o.key != null ? String(o.key) : '',
+        host: o.host != null ? String(o.host) : '',
+        container: o.container != null ? String(o.container) : '',
+        fields: Array.isArray(o.fields) ? o.fields.join(', ') : (typeof o.fields === 'string' ? o.fields : ''),
+        hideErrors: o.hideErrors === true ? 'true' : o.hideErrors === false ? 'false' : '',
+        source: o,
+        dialect
+      };
     }
 
-    // Writes the widget back in the shape the file already used, so a service that
-    // used the legacy `customapi` field keeps using it and a service that used
-    // upstream's `widget` object keeps its shape.
-    function writeWidget(conf, item) {
-      const type = item.widgetType;
-      const value = (item.widgetValue || '').trim();
-      const w = conf.widget;
-      const base = (w && typeof w === 'object' && ['customapi', 'ping', 'docker'].includes(w.type)) ? { ...w } : {};
-
-      // Drop the shapes the editor models so that changing the type does not leave the
-      // old one behind. Widgets the editor does not model (glances, ...) stay as they are.
-      if (Object.keys(base).length) delete conf.widget;
-      delete conf.container;
-      delete conf.ping;
-      delete conf.customapi;
-
-      if (type === 'none' || !value) return;
-
-      if (type === 'container') {
-        if (item.widgetDialect === 'widget') conf.widget = { ...base, type: 'docker', container: value };
-        else conf.container = value;
-      } else if (type === 'ping') {
-        if (item.widgetDialect === 'widget') conf.widget = { ...base, type: 'ping', host: value };
-        else conf.ping = value;
-      } else if (type === 'customapi') {
-        if (item.widgetDialect === 'legacy') conf.customapi = value;
-        else conf.widget = { ...base, type: 'customapi', url: value };
+    // Every widget a service carries, whichever shape the file uses: the single
+    // `widget` object, the legacy service-level `customapi`/`container`/`ping`
+    // fields, and the plural `widgets` list.
+    function normalizeWidgets(config) {
+      const out = [];
+      if (config.widget && typeof config.widget === 'object') {
+        out.push(normalizeWidget(config.widget, 'widget'));
+      } else if (config.customapi != null) {
+        out.push({ ...blankWidget(), type: 'customapi', url: String(config.customapi), source: { customapi: config.customapi }, dialect: 'legacy-customapi' });
+      } else if (config.container != null) {
+        out.push({ ...blankWidget(), type: 'docker', container: String(config.container), source: { container: config.container }, dialect: 'legacy-container' });
+      } else if (config.ping != null) {
+        out.push({ ...blankWidget(), type: 'ping', host: String(config.ping), source: { ping: config.ping }, dialect: 'legacy-ping' });
       }
+      if (Array.isArray(config.widgets)) {
+        for (const w of config.widgets) out.push(normalizeWidget(w, 'widgets'));
+      }
+      return out;
+    }
+
+    // Rebuild the widget object from the dialog values, keeping the keys the
+    // editor does not model.
+    function buildWidgetObject(w) {
+      const o = { ...(w.source && typeof w.source === 'object' ? w.source : {}) };
+      WIDGET_FIELDS.forEach((k) => delete o[k]);
+      o.type = w.type;
+      const set = (k, v) => { v ? (o[k] = v) : delete o[k]; };
+      set('url', w.url.trim());
+      set('key', w.key.trim());
+      set('host', w.host.trim());
+      set('container', w.container.trim());
+      const fields = w.fields.split(',').map((s) => s.trim()).filter(Boolean);
+      if (fields.length) o.fields = fields; else delete o.fields;
+      if (w.hideErrors === 'true') o.hideErrors = true;
+      else if (w.hideErrors === 'false') o.hideErrors = false;
+      else delete o.hideErrors;
+      return o;
+    }
+
+    // A legacy single widget only keeps its original shape when it carries no
+    // extra fields; otherwise it becomes a `widget` object.
+    function legacyIsPlain(w) {
+      const filled = WIDGET_FIELDS.filter((k) => {
+        const v = w[k];
+        return String(v || '').trim() !== '';
+      });
+      const primary = w.dialect === 'legacy-customapi' ? 'url' : w.dialect === 'legacy-container' ? 'container' : 'host';
+      return filled.length === 1 && filled[0] === primary;
+    }
+
+    // Write the widgets back, clearing every representation first so a type
+    // change does not leave the old one behind.
+    function writeWidgets(conf, item) {
+      delete conf.widget; delete conf.widgets;
+      delete conf.customapi; delete conf.container; delete conf.ping;
+      const widgets = (item.widgets || []).filter((w) => w && w.type);
+      if (!widgets.length) return;
+      if (widgets.length === 1) {
+        const w = widgets[0];
+        if (w.dialect.startsWith('legacy') && legacyIsPlain(w)) {
+          if (w.dialect === 'legacy-customapi') conf.customapi = w.url.trim();
+          else if (w.dialect === 'legacy-container') conf.container = w.container.trim();
+          else conf.ping = w.host.trim();
+          return;
+        }
+        conf.widget = buildWidgetObject(w);
+        return;
+      }
+      conf.widget = buildWidgetObject(widgets[0]);
+      conf.widgets = widgets.slice(1).map(buildWidgetObject);
     }
 
     // Save
@@ -1117,6 +1231,8 @@ const cmsApp = createApp({
     async function saveAll() {
       saving.value = true;
       try {
+        // services.yaml and bookmarks.yaml are independent files, so they are
+        // written in parallel; the custom stylesheet may go with them.
         const jobs = [
           apiFetch('/api/services', {
             method: 'PUT',
@@ -1129,19 +1245,6 @@ const cmsApp = createApp({
             body: JSON.stringify({ raw: buildBookmarkYaml(), hash: bookmarksHash.value })
           })
         ];
-        // The appearance of the Homepage dashboard is only written when it was
-        // actually changed, so an ordinary save leaves settings.yaml alone.
-        if (appearanceDirty.value) {
-          jobs.push(apiFetch('/api/homepage-settings', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              values: Object.fromEntries(appearanceFields.map((f) => [f, appearance[f] || ''])),
-              hash: appearanceHash.value
-            })
-          }));
-        }
-        // The custom stylesheet is only written when it changed.
         if (customCssDirty.value) {
           jobs.push(apiFetch('/api/homepage-custom-css', {
             method: 'PUT',
@@ -1149,44 +1252,86 @@ const cmsApp = createApp({
             body: JSON.stringify({ parts: customCssParts.value, hash: customCss.hash })
           }));
         }
-        const [svcRes, bmRes, appRes, cssRes] = await Promise.all(jobs);
-        const svcJson = await svcRes.json();
-        const bmJson = await bmRes.json();
-        const appJson = appRes ? await appRes.json() : { success: true };
-        const cssJson = cssRes ? await cssRes.json() : { success: true };
-        if (svcJson.success && bmJson.success && appJson.success && cssJson.success) {
-          servicesHash.value = svcJson.hash || null;
-          bookmarksHash.value = bmJson.hash || null;
-          if (appRes) {
-            appearanceHash.value = appJson.hash || null;
-            const saved = appJson.data.values || {};
-            for (const field of appearanceFields) appearanceLoaded[field] = saved[field] || '';
+        const results = await Promise.all(jobs);
+        const svcJson = await results[0].json();
+        const bmJson = await results[1].json();
+        const cssJson = results[2] ? await results[2].json() : null;
+        if (!svcJson.success || !bmJson.success || (cssJson && !cssJson.success)) {
+          const failed = [svcJson, bmJson, cssJson].find((j) => j && !j.success);
+          showToast(t('toast.saveFailed', { msg: (failed && failed.error) || '' }), 'error');
+          saving.value = false;
+          return;
+        }
+        servicesHash.value = svcJson.hash || null;
+        bookmarksHash.value = bmJson.hash || null;
+        if (cssJson) {
+          customCss.hash = cssJson.hash || null;
+          customCss.exists = true;
+          customCss.loadedParts = JSON.parse(JSON.stringify(customCssParts.value));
+        }
+
+        // Two tabs write settings.yaml: the visual fields and the layout
+        // block. The file is written one step at a time and the second writer
+        // takes the hash the first one returned, so the two saves do not
+        // refuse each other.
+        let settingsTouched = false;
+        if (appearanceDirty.value) {
+          const res = await apiFetch('/api/homepage-settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              values: Object.fromEntries(appearanceFields.map((f) => [f, appearance[f] || ''])),
+              hash: appearanceHash.value
+            })
+          });
+          const json = await res.json();
+          if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+          appearanceHash.value = json.hash || null;
+          layoutHash.value = json.hash || null;
+          const saved = json.data.values || {};
+          for (const field of appearanceFields) appearanceLoaded[field] = saved[field] || '';
+          settingsTouched = true;
+        }
+        if (layoutDirty.value) {
+          const res = await apiFetch('/api/homepage-layout', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              values: Object.fromEntries(LAYOUT_GLOBAL_KEYS.map((k) => [k, layoutValues[k] || ''])),
+              groups: layoutGroups.value,
+              hash: layoutHash.value
+            })
+          });
+          const json = await res.json();
+          if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+          appearanceHash.value = json.hash || null;
+          layoutHash.value = json.hash || null;
+          const savedValues = (json.data && json.data.values) || {};
+          for (const key of LAYOUT_GLOBAL_KEYS) layoutLoadedValues[key] = savedValues[key] || '';
+          if (json.data && Array.isArray(json.data.groups)) {
+            layoutGroups.value = json.data.groups.map((g) => ({ ...g }));
+            layoutMeta.value.groups = json.data.groups;
           }
-          if (cssRes) {
-            customCss.hash = cssJson.hash || null;
-            customCss.exists = true;
-            customCss.loadedParts = JSON.parse(JSON.stringify(customCssParts.value));
+          settingsTouched = true;
+        }
+
+        // The dashboard caches its settings in the memory of its process, so
+        // the preview would show the old values without this.
+        if (settingsTouched || cssJson) {
+          const revalidated = await revalidatePreview();
+          if (!revalidated) {
+            showToast(t('toast.revalidateNeeded'), 'error');
+            saving.value = false;
+            return;
           }
-          // The dashboard caches its settings in the memory of its process.
-          if (appRes || cssRes) {
-            const revalidated = await revalidatePreview();
-            if (!revalidated) {
-              showToast(t('toast.revalidateNeeded'), 'error');
-              saving.value = false;
-              return;
-            }
-          }
-           showToast(t('toast.saved'));
-           refreshPreview();
-         } else {
-           const failed = [svcJson, bmJson, appJson, cssJson].find((j) => j && !j.success);
-           showToast(t('toast.saveFailed', { msg: (failed && failed.error) || '' }), 'error');
-         }
-       } catch (err) {
-         showToast(t('toast.saveFailed', { msg: err.message }), 'error');
-       }
-       saving.value = false;
-     }
+        }
+        showToast(t('toast.saved'));
+        refreshPreview();
+      } catch (err) {
+        showToast(t('toast.saveFailed', { msg: err.message }), 'error');
+      }
+      saving.value = false;
+    }
 
     function buildYaml() {
       const doc = groups.value.map(group => {
@@ -1198,18 +1343,20 @@ const cmsApp = createApp({
             return entry;
           }
           const conf = { ...(item.source || {}) };
-          writeWidget(conf, item);
-          // Multi-widget setups stay as they are: the editor keeps editing the
-          // primary widget and leaves the extra widgets array untouched.
-          if (!Array.isArray(conf.widgets)) delete conf.widgets;
+          writeWidgets(conf, item);
           setOrDelete(conf, 'href', item.href);
           setOrDelete(conf, 'target', item.target);
           setOrDelete(conf, 'description', item.description);
           setOrDelete(conf, 'icon', item.icon);
+          setOrDelete(conf, 'siteMonitor', (item.siteMonitor || '').trim());
+          setOrDelete(conf, 'statusStyle', (item.statusStyle || '').trim());
           setOrDelete(conf, 'server', (item.server || '').trim());
           setOrDelete(conf, 'namespace', (item.namespace || '').trim());
           setOrDelete(conf, 'app', (item.app || '').trim());
           setOrDelete(conf, 'podSelector', (item.podSelector || '').trim());
+          if (item.showStats === 'true') conf.showStats = true;
+          else if (item.showStats === 'false') conf.showStats = false;
+          else delete conf.showStats;
           const weightRaw = String(item.weight ?? '').trim();
           if (weightRaw === '') delete conf.weight;
           else {
@@ -1224,10 +1371,11 @@ const cmsApp = createApp({
         // group object as the group name.
         obj[group.name] = items;
         for (const [key, value] of Object.entries(group.source || {})) {
-          if (key === group.sourceName || key === 'col-span') continue;
+          // col-span is not read by upstream; it flows through as an unmodelled
+          // field like any other key in group.source.
+          if (key === group.sourceName) continue;
           obj[key] = value;
         }
-        if (group.colSpan > 1) obj['col-span'] = group.colSpan;
         return obj;
       });
       return SERVICES_HEADER + yamlLib.dump(doc, { lineWidth: -1 });
@@ -1237,14 +1385,12 @@ const cmsApp = createApp({
     function addGroup() {
       editingGroupId.value = null;
       editingGroup.name = '';
-      editingGroup.colSpan = 1;
       showGroupModal.value = true;
     }
 
     function editGroup(group) {
       editingGroupId.value = group.id;
       editingGroup.name = group.name;
-      editingGroup.colSpan = group.colSpan || 1;
       showGroupModal.value = true;
     }
 
@@ -1252,11 +1398,11 @@ const cmsApp = createApp({
       if (!editingGroup.name.trim()) { showToast(t('group.nameRequired'), 'error'); return; }
       if (editingGroupId.value) {
         const g = groups.value.find(g => g.id === editingGroupId.value);
-        if (g) { g.name = editingGroup.name.trim(); g.colSpan = editingGroup.colSpan; }
+        if (g) g.name = editingGroup.name.trim();
       } else {
         groups.value.push({
           id: uid(), name: editingGroup.name.trim(),
-          colSpan: editingGroup.colSpan, collapsed: false, items: []
+          collapsed: false, items: []
         });
       }
       showGroupModal.value = false;
@@ -1305,14 +1451,14 @@ const cmsApp = createApp({
 
     function addBookmarkItem(group) {
       editingBookmarkItemId.value = null;
-      Object.assign(editingBookmarkItem, { name: '', href: '', abbr: '', description: '', icon: '' });
+      Object.assign(editingBookmarkItem, { name: '', href: '', abbr: '', description: '', icon: '', target: '' });
       bookmarkItemGroupId = group.id;
       showBookmarkItemModal.value = true;
     }
 
     function editBookmarkItem(group, item) {
       editingBookmarkItemId.value = item.id;
-      Object.assign(editingBookmarkItem, { name: item.name, href: item.href, abbr: item.abbr, description: item.description || '', icon: item.icon || '' });
+      Object.assign(editingBookmarkItem, { name: item.name, href: item.href, abbr: item.abbr, description: item.description || '', icon: item.icon || '', target: item.target || '' });
       bookmarkItemGroupId = group.id;
       showBookmarkItemModal.value = true;
     }
@@ -1327,6 +1473,7 @@ const cmsApp = createApp({
       const abbr = editingBookmarkItem.abbr.trim().toUpperCase() || name.slice(0, 2).toUpperCase();
       const description = (editingBookmarkItem.description || '').trim();
       const icon = (editingBookmarkItem.icon || '').trim();
+      const target = editingBookmarkItem.target;
       if (editingBookmarkItemId.value) {
         const item = group.items.find(i => i.id === editingBookmarkItemId.value);
         if (item) {
@@ -1335,9 +1482,10 @@ const cmsApp = createApp({
           item.abbr = abbr;
           item.description = description;
           item.icon = icon;
+          item.target = target;
         }
       } else {
-        group.items.push({ id: uid(), name, href, abbr, description, icon, source: {} });
+        group.items.push({ id: uid(), name, href, abbr, description, icon, target, source: {} });
       }
       showBookmarkItemModal.value = false;
     }
@@ -1355,6 +1503,7 @@ const cmsApp = createApp({
           setOrDelete(props, 'href', item.href);
           setOrDelete(props, 'description', (item.description || '').trim());
           setOrDelete(props, 'icon', (item.icon || '').trim());
+          setOrDelete(props, 'target', item.target);
           const entry = {};
           entry[item.name] = [props];
           return entry;
@@ -1503,6 +1652,159 @@ const cmsApp = createApp({
       }
     }
 
+    // ---- Homepage layout (settings.yaml: layout block + global switches) ----
+    // The layout entries and the global switches of settings.yaml, beside the
+    // visual fields the appearance tab edits. They live in the same file, so
+    // the two tabs each hold a hash and only write when their own values
+    // changed.
+    const layoutGroups = ref([]);
+    const layoutValues = reactive({});
+    const layoutLoadedValues = reactive({});
+    const layoutHash = ref(null);
+    const layoutReady = ref(false);
+    const layoutMeta = ref({ choices: {}, exists: false, path: '' });
+    const showLayoutGroupModal = ref(false);
+    const editingLayoutGroupIndex = ref(null);
+    const editingLayoutGroup = reactive({ name: '', tab: '', style: '', columns: '', icon: '', header: '', initiallyCollapsed: '', useEqualHeights: '' });
+
+    // The group names that exist in services.yaml / bookmarks.yaml. A layout
+    // entry that does not match any of them is an orphan: upstream still
+    // honours it (auto-discovered groups, tabs), so the editor shows it with a
+    // marker instead of hiding it.
+    const knownGroupNames = computed(() => {
+      const names = new Set();
+      for (const g of groups.value) names.add(g.name);
+      for (const g of bookmarkGroups.value) names.add(g.name);
+      return names;
+    });
+
+    const LAYOUT_GLOBAL_KEYS = [
+      'title', 'description', 'language', 'target', 'startUrl', 'favicon',
+      'base', 'instanceName', 'logpath',
+      'fullWidth', 'maxGroupColumns', 'maxBookmarkGroupColumns',
+      'disableCollapse', 'groupsInitiallyCollapsed', 'useEqualHeights',
+      'bookmarksStyle', 'hideVersion', 'disableUpdateCheck', 'hideErrors',
+      'disableIndexing', 'statusStyle', 'showStats'
+    ];
+
+    const layoutDirty = computed(() => {
+      if (!layoutReady.value) return false;
+      for (const key of LAYOUT_GLOBAL_KEYS) {
+        if ((layoutValues[key] || '') !== (layoutLoadedValues[key] || '')) return true;
+      }
+      const norm = (g) => { const o = { ...g }; delete o.source; return o; };
+      return JSON.stringify(layoutGroups.value.map(norm)) !== JSON.stringify((layoutMeta.value.groups || []).map(norm));
+    });
+
+    async function loadLayoutSettings() {
+      try {
+        const res = await apiFetch('/api/homepage-layout');
+        const json = await res.json();
+        if (json.success) {
+          layoutGroups.value = json.data.groups.map((g) => ({ ...g }));
+          layoutMeta.value = json.data;
+          layoutMeta.value.groups = json.data.groups;
+          layoutHash.value = json.hash || null;
+          layoutReady.value = true;
+          for (const key of LAYOUT_GLOBAL_KEYS) {
+            layoutValues[key] = (json.data.values || {})[key] || '';
+            layoutLoadedValues[key] = (json.data.values || {})[key] || '';
+          }
+        }
+      } catch (err) {
+        showToast(t('toast.loadAppearanceFailed', { msg: err.message }), 'error');
+      }
+    }
+
+    // The layout tab is read when it is opened, not on every page load.
+    function openLayoutTab() {
+      activeTab.value = 'layout';
+      if (!layoutReady.value) loadLayoutSettings();
+    }
+
+    function addLayoutGroup() {
+      editingLayoutGroupIndex.value = null;
+      Object.assign(editingLayoutGroup, { name: '', tab: '', style: '', columns: '', icon: '', header: '', initiallyCollapsed: '', useEqualHeights: '' });
+      showLayoutGroupModal.value = true;
+    }
+
+    function editLayoutGroup(lg, index) {
+      editingLayoutGroupIndex.value = index;
+      Object.assign(editingLayoutGroup, {
+        name: lg.name, tab: lg.tab || '', style: lg.style || '',
+        columns: String(lg.columns || ''), icon: lg.icon || '',
+        header: lg.header || '', initiallyCollapsed: lg.initiallyCollapsed || '',
+        useEqualHeights: lg.useEqualHeights || ''
+      });
+      showLayoutGroupModal.value = true;
+    }
+
+    function saveLayoutGroup() {
+      const name = editingLayoutGroup.name.trim();
+      if (!name) { showToast(t('layout.groupNameRequired'), 'error'); return; }
+      const entry = { name };
+      // The tristate fields carry '' (not set) or the strings 'true' / 'false'.
+      const tristate = ['header', 'initiallyCollapsed', 'useEqualHeights'];
+      for (const field of ['tab', 'style', 'icon', 'header', 'initiallyCollapsed', 'useEqualHeights']) {
+        const value = String(editingLayoutGroup[field] || '').trim();
+        if (value && (tristate.includes(field) ? value === 'true' || value === 'false' : true)) entry[field] = value;
+      }
+      const columnsRaw = String(editingLayoutGroup.columns || '').trim();
+      if (columnsRaw) {
+        const columnsNum = Number(columnsRaw);
+        if (Number.isInteger(columnsNum) && columnsNum >= 2 && columnsNum <= 8) entry.columns = columnsNum;
+      }
+      // Editing an existing group keeps its source object, so unmodelled keys
+      // (nested subgroups) survive the save.
+      const source = editingLayoutGroupIndex.value !== null
+        ? (layoutGroups.value[editingLayoutGroupIndex.value] || {}).source
+        : undefined;
+      entry.source = source && typeof source === 'object' ? source : {};
+      if (editingLayoutGroupIndex.value === null) {
+        layoutGroups.value.push(entry);
+      } else {
+        layoutGroups.value[editingLayoutGroupIndex.value] = entry;
+      }
+      showLayoutGroupModal.value = false;
+    }
+
+    function deleteLayoutGroup(li) {
+      const entry = layoutGroups.value[li];
+      if (confirm(t('layout.confirmDeleteGroup', { name: entry.name }))) {
+        layoutGroups.value.splice(li, 1);
+      }
+    }
+
+    async function saveLayoutSettings() {
+      try {
+        const res = await apiFetch('/api/homepage-layout', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            values: Object.fromEntries(LAYOUT_GLOBAL_KEYS.map((k) => [k, layoutValues[k] || ''])),
+            groups: layoutGroups.value,
+            hash: layoutHash.value
+          })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+        layoutHash.value = json.hash || null;
+        for (const key of LAYOUT_GLOBAL_KEYS) layoutLoadedValues[key] = ((json.data && json.data.values) || {})[key] || '';
+        if (json.data && Array.isArray(json.data.groups)) {
+          layoutGroups.value = json.data.groups.map((g) => ({ ...g }));
+          layoutMeta.value.groups = json.data.groups;
+        }
+        const revalidated = await revalidatePreview();
+        if (!revalidated) {
+          showToast(t('toast.revalidateNeeded'), 'error');
+        }
+        showToast(t('toast.saved'));
+        refreshPreview();
+      } catch (err) {
+        showToast(t('toast.saveFailed', { msg: err.message }), 'error');
+      }
+    }
+
     // ---- Custom CSS ----
     async function loadCustomCss() {
       try {
@@ -1559,9 +1861,10 @@ const cmsApp = createApp({
     function addItem(group) {
       editingItemId.value = null;
       Object.assign(editingItem, {
-        name: '', href: '', description: '', target: '',
-        icon: '', iconType: 'mdi', widgetType: 'none', widgetValue: '',
-        server: '', weight: '', namespace: '', app: '', podSelector: ''
+        name: '', href: '', description: '', target: '', icon: '', iconType: 'mdi',
+        siteMonitor: '', statusStyle: '', showStats: '',
+        server: '', weight: '', namespace: '', app: '', podSelector: '',
+        widgets: []
       });
       editingItem._targetGroupId = group.id;
       showItemModal.value = true;
@@ -1572,13 +1875,13 @@ const cmsApp = createApp({
       Object.assign(editingItem, {
         name: item.name, href: item.href, description: item.description,
         target: item.target, icon: item.icon, iconType: item.iconType,
-        widgetType: item.widgetType, widgetValue: item.widgetValue,
+        siteMonitor: item.siteMonitor || '', statusStyle: item.statusStyle || '',
+        showStats: item.showStats || '',
         server: item.server || '', weight: item.weight || '',
-        namespace: item.namespace || '', app: item.app || '', podSelector: item.podSelector || ''
+        namespace: item.namespace || '', app: item.app || '', podSelector: item.podSelector || '',
+        widgets: Array.isArray(item.widgets) ? item.widgets.map((w) => ({ ...w, headers: (w.headers || []).map((h) => ({ ...h })) })) : []
       });
-      editingItem._widgetsExtra = Array.isArray(item.widgetsExtra) ? item.widgetsExtra : null;
       editingItem._targetGroupId = group.id;
-      editingItem._widgetsExtra = null;
       showItemModal.value = true;
     }
 
@@ -1593,10 +1896,13 @@ const cmsApp = createApp({
             name: editingItem.name.trim(), href: editingItem.href.trim(),
             description: editingItem.description.trim(), target: editingItem.target,
             icon: editingItem.icon.trim(), iconType: editingItem.iconType,
-            widgetType: editingItem.widgetType, widgetValue: editingItem.widgetValue.trim(),
+            siteMonitor: editingItem.siteMonitor.trim(),
+            statusStyle: editingItem.statusStyle,
+            showStats: editingItem.showStats,
             server: editingItem.server.trim(), weight: editingItem.weight.trim(),
             namespace: editingItem.namespace.trim(), app: editingItem.app.trim(),
-            podSelector: editingItem.podSelector.trim()
+            podSelector: editingItem.podSelector.trim(),
+            widgets: editingItem.widgets.map((w) => ({ ...w, headers: (w.headers || []).map((h) => ({ ...h })) }))
           });
         }
       } else {
@@ -1604,12 +1910,14 @@ const cmsApp = createApp({
           id: uid(), name: editingItem.name.trim(), href: editingItem.href.trim(),
           description: editingItem.description.trim(), target: editingItem.target,
           icon: editingItem.icon.trim(), iconType: editingItem.iconType,
-          widgetType: editingItem.widgetType, widgetValue: editingItem.widgetValue.trim(),
+          siteMonitor: editingItem.siteMonitor.trim(),
+          statusStyle: editingItem.statusStyle,
+          showStats: editingItem.showStats,
           server: editingItem.server.trim(), weight: editingItem.weight.trim(),
           namespace: editingItem.namespace.trim(), app: editingItem.app.trim(),
           podSelector: editingItem.podSelector.trim(),
-          widgetsExtra: null,
-          widgetDialect: 'none', nested: false, source: null
+          widgets: editingItem.widgets.map((w) => ({ ...w, headers: (w.headers || []).map((h) => ({ ...h })) })),
+          nested: false, source: null
         });
       }
       showItemModal.value = false;
@@ -2148,12 +2456,18 @@ const cmsApp = createApp({
       editingBookmarkGroupId, editingBookmarkItemId, editingBookmarkGroup, editingBookmarkItem,
       appearance, appearanceMeta, appearancePalette, knownPaletteIds, appearanceDirty, appearanceReady,
       appearanceChoices, appearanceChoiceLabel, loadAppearance, saveAppearance, openAppearanceTab,
+      layoutGroups, layoutValues, layoutReady, layoutDirty, layoutMeta, knownGroupNames,
+      showLayoutGroupModal, editingLayoutGroup, editingLayoutGroupIndex,
+      openLayoutTab, loadLayoutSettings, addLayoutGroup, editLayoutGroup, saveLayoutGroup,
+      deleteLayoutGroup, saveLayoutSettings,
       customCss, customCssDirty, customCssReady, loadCustomCss, saveCustomCss, revalidatePreview,
       customCssPalette, customCssText, customCssRampRows, customCssSeed, customCssParts,
       setCustomCssSeed, restoreCustomCssTheme, resetCustomCssTheme,
       resetAllCustomCss, confirmResetAllCustomCss, probeFontUrl,
       movingItem, movingFromGroup, dragOverGroup, dropIndex, draggingItem, backups, toast,
-      totalItems, activeGroups, activeTotalItems, widgetValueLabel, widgetValuePlaceholder,
+      totalItems, activeGroups, activeTotalItems,
+      widgetTypes, widgetTypeLabel, widgetValueHint, itemWidgetBadges,
+      addWidgetRow, removeWidgetRow, iconPreviewUrl, isMdiIcon, mdiClassOf,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,
       addItem, editItem, saveItem, deleteItem,
       moveItemToGroup, confirmMove,
@@ -2166,7 +2480,6 @@ const cmsApp = createApp({
       initAuth, dismissPasswordPrompt, closeOnOverlayClick,
       previewCollapsed, isColumn, isResizing, splitRatio, startResize, onResize, stopResize,
       editorPanelStyle, previewPanelStyle,
-      widgetTypeLabel,
       addBookmarkGroup, editBookmarkGroup, deleteBookmarkGroup,
       saveBookmarkGroup,
       addBookmarkItem, editBookmarkItem, saveBookmarkItem, deleteBookmarkItem,
