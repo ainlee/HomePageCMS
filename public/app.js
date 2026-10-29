@@ -5,6 +5,78 @@ const ramp = window.HomepageRamp;
 // root. The server puts it in window.__META__ so page and code always agree.
 const BASE = (window.__META__ || {}).basePath || '';
 
+// Icon helpers for the live previews. Upstream resolves prefixed icons from a
+// CDN (mdi-XX, si-XX, sh-XX, or a dashboard-icons name); a hex color suffix
+// on an mdi / si icon recolors it. They live at module scope so the shared
+// icon-field component and the in-list previews both reach them.
+function isMdiIcon(icon) {
+  const v = String(icon || '').trim();
+  return v.startsWith('mdi-') && !/\.(png|webp|svg)$/i.test(v);
+}
+
+// The mdi class, without any color suffix: mdi-test-#f0d453 -> mdi-test.
+function mdiClassOf(icon) {
+  const v = String(icon || '').trim();
+  const m = v.match(/^mdi-[\w-]+?(?:-#([a-fA-F0-9]{6}))?$/);
+  return m ? 'mdi-' + m[0].replace(/^mdi-/, '').replace(/-#[a-fA-F0-9]{6}$/, '') : v;
+}
+
+// The URL to preview an icon value as an image: a real URL, or the CDN
+// address of a prefixed / named icon. '' when nothing to show.
+function iconPreviewUrl(icon, iconType) {
+  const v = String(icon || '').trim();
+  if (!v) return '';
+  if (iconType === 'url' || v.startsWith('http') || v.startsWith('//') || v.startsWith('/')) return v;
+  if (isMdiIcon(v)) return '';
+  const colorMatch = v.match(/#([a-fA-F0-9]{6})$/);
+  let name = colorMatch ? v.slice(0, -colorMatch[0].length) : v;
+  const dash = name.indexOf('-');
+  const prefix = dash > 0 ? name.slice(0, dash) : '';
+  const base = dash > 0 ? name.slice(dash + 1) : name;
+  const stripExt = (s) => s.replace(/\.(png|webp|svg)$/i, '');
+  if (prefix === 'si') return 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/' + stripExt(base).toLowerCase() + '.svg';
+  if (prefix === 'sh') return 'https://cdn.jsdelivr.net/gh/selfhst/icons@main/png/' + stripExt(base) + '.png';
+  return 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/' + stripExt(base) + '.png';
+}
+
+// One shared "icon input + live preview" that every group / item dialog
+// renders instead of a private copy, so the forms cannot drift apart. It
+// renders the whole .form-group (label, input, preview) - the shape the CSS
+// and the tests already expect.
+const IconField = {
+  props: {
+    modelValue: { type: String, default: '' },
+    label: { type: String, default: '' },
+    placeholder: { type: String, default: '' },
+    inputId: { type: String, default: '' },
+    iconType: { type: String, default: 'mdi' },
+    enterToSubmit: { type: Boolean, default: false }
+  },
+  emits: ['update:modelValue', 'submit'],
+  setup(props, { emit }) {
+    return {
+      isMdiIcon,
+      mdiClassOf,
+      // The live preview recomputes with the bound value.
+      previewUrl: computed(() => iconPreviewUrl(props.modelValue, props.iconType)),
+      onEnter() { if (props.enterToSubmit) emit('submit'); }
+    };
+  },
+  template:
+    '<div class="form-group">' +
+    '  <label>{{ label }}</label>' +
+    '  <div class="icon-input-wrap">' +
+    '    <input :id="inputId || undefined" :value="modelValue" type="text" :placeholder="placeholder" ' +
+    '           @input="$emit(\'update:modelValue\', $event.target.value)" ' +
+    '           @keyup.enter="onEnter">' +
+    '    <div class="icon-preview" v-if="modelValue">' +
+    '      <i v-if="isMdiIcon(modelValue)" class="mdi icon-preview-glyph" :class="mdiClassOf(modelValue)"></i>' +
+    '      <img v-else-if="previewUrl" :src="previewUrl" class="icon-preview-img">' +
+    '    </div>' +
+    '  </div>' +
+    '</div>'
+};
+
 const cmsApp = createApp({
   setup() {
     const loadLayout = () => {
@@ -467,7 +539,7 @@ const cmsApp = createApp({
     // first visit and stays until it is saved or explicitly skipped.
     const isFirstRun = ref(false);
 
-    const editingGroup = reactive({ name: '' });
+    const editingGroup = reactive({ name: '', icon: '' });
     const editingItem = reactive({
       name: '', href: '', description: '', target: '',
       icon: '', iconType: 'mdi',
@@ -475,7 +547,7 @@ const cmsApp = createApp({
       server: '', weight: '', namespace: '', app: '', podSelector: '',
       widgets: []
     });
-    const editingBookmarkGroup = reactive({ name: '' });
+    const editingBookmarkGroup = reactive({ name: '', icon: '' });
     const editingBookmarkItem = reactive({ name: '', href: '', abbr: '', description: '', icon: '', target: '' });
     // One information widget (widgets.yaml): its type and the options the
     // editor models. source keeps the raw object so unmodelled options
@@ -838,38 +910,9 @@ const cmsApp = createApp({
       }
     }
 
-    // The icon helpers for a live preview. Upstream resolves prefixed icons
-    // from a CDN (mdi-XX, si-XX, sh-XX, or a dashboard-icons name); a hex color
-    // suffix on an mdi / si icon recolors it.
-    function isMdiIcon(icon) {
-      const v = String(icon || '').trim();
-      return v.startsWith('mdi-') && !/\.(png|webp|svg)$/i.test(v);
-    }
-
-    // The mdi class, without any color suffix: mdi-test-#f0d453 -> mdi-test.
-    function mdiClassOf(icon) {
-      const v = String(icon || '').trim();
-      const m = v.match(/^mdi-[\w-]+?(?:-#([a-fA-F0-9]{6}))?$/);
-      return m ? 'mdi-' + m[0].replace(/^mdi-/, '').replace(/-#[a-fA-F0-9]{6}$/, '') : v;
-    }
-
-    // The URL to preview an icon value as an image: a real URL, or the CDN
-    // address of a prefixed / named icon. '' when nothing to show.
-    function iconPreviewUrl(icon, iconType) {
-      const v = String(icon || '').trim();
-      if (!v) return '';
-      if (iconType === 'url' || v.startsWith('http') || v.startsWith('//') || v.startsWith('/')) return v;
-      if (isMdiIcon(v)) return '';
-      const colorMatch = v.match(/#([a-fA-F0-9]{6})$/);
-      let name = colorMatch ? v.slice(0, -colorMatch[0].length) : v;
-      const dash = name.indexOf('-');
-      const prefix = dash > 0 ? name.slice(0, dash) : '';
-      const base = dash > 0 ? name.slice(dash + 1) : name;
-      const stripExt = (s) => s.replace(/\.(png|webp|svg)$/i, '');
-      if (prefix === 'si') return 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/' + stripExt(base).toLowerCase() + '.svg';
-      if (prefix === 'sh') return 'https://cdn.jsdelivr.net/gh/selfhst/icons@main/png/' + stripExt(base) + '.png';
-      return 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/' + stripExt(base) + '.png';
-    }
+    // The icon preview helpers (isMdiIcon, mdiClassOf, iconPreviewUrl) live at
+    // module scope next to the shared icon-field component; the return object
+    // below still exposes them so the in-list previews can use them.
 
     // Helpers
     function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -1419,6 +1462,26 @@ const cmsApp = createApp({
     }
 
     // Group CRUD
+
+    // The settings.yaml layout entry of a group, shared by the service and the
+    // bookmark group dialogs so the two cannot drift: read the icon the group's
+    // layout entry carries, and (re)write it when the group is created or
+    // renamed.
+    function groupLayoutIconOf(name) {
+      const entry = layoutGroups.value.find((g) => g.name === name);
+      return entry ? (entry.icon || '') : '';
+    }
+
+    function syncGroupLayoutIcon(oldName, newName, icon) {
+      const li = oldName ? layoutGroups.value.findIndex((x) => x.name === oldName) : -1;
+      if (li >= 0) {
+        layoutGroups.value[li].name = newName;
+        setOrDelete(layoutGroups.value[li], 'icon', icon);
+      } else if (icon) {
+        layoutGroups.value.push({ name: newName, icon, source: {} });
+      }
+    }
+
     function addGroup() {
       editingGroupId.value = null;
       editingGroup.name = '';
@@ -1429,26 +1492,24 @@ const cmsApp = createApp({
     function editGroup(group) {
       editingGroupId.value = group.id;
       editingGroup.name = group.name;
-      const layoutEntry = layoutGroups.value.find((g) => g.name === group.name);
-      editingGroup.icon = layoutEntry ? (layoutEntry.icon || '') : '';
+      editingGroup.icon = groupLayoutIconOf(group.name);
       showGroupModal.value = true;
     }
 
     function saveGroup() {
       if (!editingGroup.name.trim()) { showToast(t('group.nameRequired'), 'error'); return; }
       const newName = editingGroup.name.trim();
+      const icon = editingGroup.icon.trim();
       if (editingGroupId.value) {
         const g = groups.value.find(g => g.id === editingGroupId.value);
         if (g) {
           const oldName = g.name;
           g.name = newName;
-          const li = layoutGroups.value.findIndex((x) => x.name === oldName);
-          if (li >= 0) { layoutGroups.value[li].name = newName; layoutGroups.value[li].icon = editingGroup.icon.trim(); }
-          else if (editingGroup.icon.trim()) { layoutGroups.value.push({ name: newName, icon: editingGroup.icon.trim(), source: {} }); }
+          syncGroupLayoutIcon(oldName, newName, icon);
         }
       } else {
         groups.value.push({ id: uid(), name: newName, collapsed: false, items: [] });
-        if (editingGroup.icon.trim()) { layoutGroups.value.push({ name: newName, icon: editingGroup.icon.trim(), source: {} }); }
+        syncGroupLayoutIcon(null, newName, icon);
       }
       showGroupModal.value = false;
     }
@@ -1465,25 +1526,33 @@ const cmsApp = createApp({
     function addBookmarkGroup() {
       editingBookmarkGroupId.value = null;
       editingBookmarkGroup.name = '';
+      editingBookmarkGroup.icon = '';
       showBookmarkGroupModal.value = true;
     }
 
     function editBookmarkGroup(group) {
       editingBookmarkGroupId.value = group.id;
       editingBookmarkGroup.name = group.name;
+      editingBookmarkGroup.icon = groupLayoutIconOf(group.name);
       showBookmarkGroupModal.value = true;
     }
 
     function saveBookmarkGroup() {
       const name = editingBookmarkGroup.name.trim();
       if (!name) { showToast(t('bookmark.groupNameRequired'), 'error'); return; }
+      const icon = editingBookmarkGroup.icon.trim();
       if (editingBookmarkGroupId.value) {
         const group = bookmarkGroups.value.find(g => g.id === editingBookmarkGroupId.value);
-        if (group) group.name = name;
+        if (group) {
+          const oldName = group.name;
+          group.name = name;
+          syncGroupLayoutIcon(oldName, name, icon);
+        }
       } else {
         bookmarkGroups.value.push({
           id: uid(), name, sourceName: name, source: {}, collapsed: false, items: []
         });
+        syncGroupLayoutIcon(null, name, icon);
       }
       showBookmarkGroupModal.value = false;
     }
@@ -2691,6 +2760,9 @@ const cmsApp = createApp({
     };
   }
 });
+
+// One shared icon input + live preview for every group / item dialog.
+cmsApp.component('icon-field', IconField);
 
 // Vue catches render errors itself, so the global error handler never sees them and
 // the page would just go blank. Registering the handler here as well turns a failed

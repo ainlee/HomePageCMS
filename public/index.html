@@ -678,16 +678,8 @@
           <label>{{ t('group.name') }}</label>
           <input v-model="editingGroup.name" type="text" :placeholder="t('group.namePlaceholder')">
         </div>
-        <div class="form-group">
-          <label>{{ t('group.icon') }}</label>
-          <div class="icon-input-wrap">
-            <input v-model="editingGroup.icon" type="text" placeholder="mdi-robot / home-assistant.png">
-            <div class="icon-preview" v-if="editingGroup.icon">
-              <i v-if="isMdiIcon(editingGroup.icon)" class="mdi icon-preview-glyph" :class="mdiClassOf(editingGroup.icon)"></i>
-              <img v-else-if="iconPreviewUrl(editingGroup.icon, 'mdi')" :src="iconPreviewUrl(editingGroup.icon, 'mdi')" class="icon-preview-img">
-            </div>
-          </div>
-        </div>
+        <icon-field v-model="editingGroup.icon" :label="t('group.icon')"
+                    :placeholder="t('group.iconPlaceholder')"></icon-field>
         <div class="modal-actions">
           <button @click="showGroupModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
           <button @click="saveGroup" class="btn btn-primary">{{ t('common.confirm') }}</button>
@@ -720,16 +712,8 @@
             <label>{{ t('layout.columns') }}</label>
             <input v-model="editingLayoutGroup.columns" type="text" inputmode="numeric" :placeholder="t('layout.columnsHint')">
           </div>
-          <div class="form-group">
-            <label>{{ t('layout.icon') }}</label>
-            <div class="icon-input-wrap">
-              <input v-model="editingLayoutGroup.icon" type="text" placeholder="mdi-robot / home-assistant.png">
-              <div class="icon-preview" v-if="editingLayoutGroup.icon">
-                <i v-if="isMdiIcon(editingLayoutGroup.icon)" class="mdi icon-preview-glyph" :class="mdiClassOf(editingLayoutGroup.icon)"></i>
-                <img v-else-if="iconPreviewUrl(editingLayoutGroup.icon, 'mdi')" :src="iconPreviewUrl(editingLayoutGroup.icon, 'mdi')" class="icon-preview-img">
-              </div>
-            </div>
-          </div>
+          <icon-field v-model="editingLayoutGroup.icon" :label="t('layout.icon')"
+                      :placeholder="t('layout.iconPlaceholder')"></icon-field>
           <div class="form-group">
             <label>{{ t('layout.header') }}</label>
             <select v-model="editingLayoutGroup.header">
@@ -793,18 +777,9 @@
               <option value="url">{{ t('item.iconUrl') }}</option>
             </select>
           </div>
-          <div class="form-group">
-            <label>{{ t('item.iconValue') }}</label>
-            <div class="icon-input-wrap">
-              <input v-model="editingItem.icon" type="text" :placeholder="editingItem.iconType === 'mdi' ? t('item.iconValueMdi') : t('item.iconValueUrl')">
-              <div class="icon-preview" v-if="editingItem.icon">
-                <i v-if="isMdiIcon(editingItem.icon)" class="mdi icon-preview-glyph" :class="mdiClassOf(editingItem.icon)"></i>
-                <img v-else-if="iconPreviewUrl(editingItem.icon, editingItem.iconType)"
-                     :src="iconPreviewUrl(editingItem.icon, editingItem.iconType)"
-                     class="icon-preview-img">
-              </div>
-            </div>
-          </div>
+          <icon-field v-model="editingItem.icon" :label="t('item.iconValue')"
+                      :placeholder="editingItem.iconType === 'mdi' ? t('item.iconValueMdi') : t('item.iconValueUrl')"
+                      :icon-type="editingItem.iconType"></icon-field>
           <!-- Multi-widget editor: one block per widget the service carries. -->
           <div class="form-group form-wide">
             <label class="form-section-label">
@@ -916,6 +891,9 @@
           <input id="bookmark-group-name" v-model="editingBookmarkGroup.name" type="text"
                  :placeholder="t('bookmark.groupNamePlaceholder')" @keyup.enter="saveBookmarkGroup">
         </div>
+        <icon-field input-id="bookmark-group-icon" v-model="editingBookmarkGroup.icon" :label="t('group.icon')"
+                    :placeholder="t('group.iconPlaceholder')" enter-to-submit
+                    @submit="saveBookmarkGroup"></icon-field>
         <div class="modal-actions">
           <button @click="showBookmarkGroupModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
           <button @click="saveBookmarkGroup" class="btn btn-primary">{{ t('common.confirm') }}</button>
@@ -947,17 +925,9 @@
           <input id="bookmark-description" v-model="editingBookmarkItem.description" type="text"
                  :placeholder="t('bookmark.descriptionPlaceholder')" @keyup.enter="saveBookmarkItem">
         </div>
-        <div class="form-group">
-          <label>{{ t('bookmark.icon') }}</label>
-          <div class="icon-input-wrap">
-            <input id="bookmark-icon" v-model="editingBookmarkItem.icon" type="text"
-                   :placeholder="t('bookmark.iconPlaceholder')" @keyup.enter="saveBookmarkItem">
-            <div class="icon-preview" v-if="editingBookmarkItem.icon">
-              <i v-if="isMdiIcon(editingBookmarkItem.icon)" class="mdi icon-preview-glyph" :class="mdiClassOf(editingBookmarkItem.icon)"></i>
-              <img v-else-if="iconPreviewUrl(editingBookmarkItem.icon, 'mdi')" :src="iconPreviewUrl(editingBookmarkItem.icon, 'mdi')" class="icon-preview-img">
-            </div>
-          </div>
-        </div>
+        <icon-field input-id="bookmark-icon" v-model="editingBookmarkItem.icon" :label="t('bookmark.icon')"
+                    :placeholder="t('bookmark.iconPlaceholder')" enter-to-submit
+                    @submit="saveBookmarkItem"></icon-field>
         <div class="form-group">
           <label>{{ t('bookmark.target') }}</label>
           <select v-model="editingBookmarkItem.target">
