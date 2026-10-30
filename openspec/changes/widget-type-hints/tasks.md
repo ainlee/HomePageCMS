@@ -5,9 +5,8 @@
  [x] 1.1 public/widget-types.js 補上 ping；docs/tmp/gen-widget-types.cjs 改為
       「目錄掃描加固定服務層型別（ping）」合併寫入，重跑可重現
 - [x] 1.2 四份內建語系檔（en、ja、zh-CN、zh-TW）各加 [widgets] section：
-      常用型別（docker、ping、gatus、traefik、customapi、grafana、uptimekuma、
-      plex、jellyfin、nextcloud、syncthing、pihole、proxmox、kubernetes 等）
-      先寫入一筆提示；未覆蓋型別缺 key 照慣例退回
+      對 public/widget-types.js 列出的全部型別（現 169 筆）逐一寫入一筆提示；
+      檔案裡有、型別清單沒有的型別缺 key 照慣例退回、該列右側留空
 - [x] 1.3 app.js 的 widgetTypeLabel 與 widgetValueHint 對 ping 給出本地化名稱
       與 IP 佔位提示
 

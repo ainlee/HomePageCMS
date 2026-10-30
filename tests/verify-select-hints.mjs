@@ -38,8 +38,9 @@ const originalRaw = seed.raw || '';
 const originalHash = seed.hash;
 
 // One legacy ping service and one multi-widget service: the shapes the
-// editor writes are checked against after the save. watchtower has no
-// hint key, so it also stands in for the missing-key fallback.
+// editor writes are checked against after the save. legacyfake is a type
+// unknown to the editor (not in public/widget-types.js), so it stands in
+// for the missing-key fallback.
 const SEED = [
   '- Media:',
   '    - Pinger:',
@@ -51,8 +52,8 @@ const SEED = [
   '          type: plex',
   '          url: http://plex.host',
   '        widgets:',
-  '          - type: watchtower',
-  '            url: http://watchtower.host'
+  '          - type: legacyfake',
+  '            url: http://legacyfake.host'
 ].join('\n');
 
 await api('/api/services', {
@@ -67,6 +68,7 @@ await waitFor('!!(document.querySelector("#app") && document.querySelector("#app
 await sleep(600);
 
 const openService = (index) => ev('(() => { const cards = document.querySelectorAll(".item-card"); const c = cards[' + index + ']; const b = c && c.querySelector(".item-actions .btn"); if (b) b.click(); return !!b; })()');
+const cancelDialog = () => ev('(() => { const b = document.querySelector(".modal .modal-actions .btn-secondary"); if (b) b.click(); return !!b; })()');
 
 // Open the Pinger service: its legacy ping field loads as a widget row.
 await openService(0);
@@ -82,19 +84,38 @@ check('the trigger shows its right-aligned hint', pr.hint !== '', pr.hint);
 await ev('(() => { const t = document.querySelector(".widget-row .widget-type .sh-trigger"); if (t) t.click(); return !!t; })()');
 await sleep(300);
 
-const rows = await ev('(() => { const opts = [...document.querySelectorAll(".widget-row .widget-type .sh-opt")].filter((o) => ["ping", "plex", "kubernetes", "watchtower"].includes(o.getAttribute("data-value"))); return JSON.stringify(opts.map((o) => { const hint = o.querySelector(".sh-opt-hint"); const hs = hint ? getComputedStyle(hint) : {}; return { value: o.getAttribute("data-value"), hint: hint ? hint.textContent.trim() : "", hasHint: !!hint, hintAlign: hs ? hs.textAlign : "" }; })); })()');
+const rows = await ev('(() => { const opts = [...document.querySelectorAll(".widget-row .widget-type .sh-opt")].filter((o) => ["ping", "plex", "kubernetes"].includes(o.getAttribute("data-value"))); return JSON.stringify(opts.map((o) => { const hint = o.querySelector(".sh-opt-hint"); const hs = hint ? getComputedStyle(hint) : {}; return { value: o.getAttribute("data-value"), hint: hint ? hint.textContent.trim() : "", hasHint: !!hint, hintAlign: hs ? hs.textAlign : "" }; })); })()');
 const rowArr = JSON.parse(rows);
-const known = rowArr.filter((r) => r.value !== 'watchtower');
-check('known type rows carry their hint text', known.length >= 3 && known.every((r) => r.hint !== ''), rows);
-check('hints are right-aligned in the row', known.every((r) => r.hintAlign === 'right'), known.map((r) => r.hintAlign).join(','));
-const unknown = rowArr.find((r) => r.value === 'watchtower');
-check('a type without a hint key falls back to no hint', unknown && unknown.hasHint === false, JSON.stringify(unknown));
+check('known type rows carry their hint text', rowArr.length >= 3 && rowArr.every((r) => r.hint !== ''), rows);
+check('hints are right-aligned in the row', rowArr.every((r) => r.hintAlign === 'right'), rowArr.map((r) => r.hintAlign).join(','));
 
 // Marquee mechanism: the hint text is duplicated in the run so an
 // overflowing hint can scroll seamlessly; short hints sit still.
 const marquee = await ev('(() => { const sh = document.querySelector(".widget-row .widget-type"); const opt = [...sh.querySelectorAll(".sh-opt")].find((o) => o.querySelector(".sh-opt-hint")); if (!opt) return "no-hint-opt"; const run = opt.querySelector(".sh-hint-run"); const copies = run ? run.querySelectorAll(".sh-hint-copy").length : 0; return JSON.stringify({ copies, marquee: opt.classList.contains("sh-marquee"), clip: opt.classList.contains("sh-clip") }); })()');
 const mq = JSON.parse(marquee);
 check('the marquee mechanism duplicates the hint text', mq.copies === 2, marquee);
+
+// Close the Pinger dialog and open the Multi service: its second widget
+// row carries the unknown legacyfake type, whose option row has no hint
+// element at all (the fallback).
+await cancelDialog();
+await sleep(300);
+await openService(1);
+await sleep(400);
+const multiRows = await ev('(() => { const shs = [...document.querySelectorAll(".widget-row .widget-type")]; return JSON.stringify(shs.map((s) => s.getAttribute("data-value"))); })()');
+check('the multi-widget service shows both rows', multiRows === '["plex","legacyfake"]', multiRows);
+await ev('(() => { const shs = document.querySelectorAll(".widget-row .widget-type"); for (const sh of shs) { if (sh.getAttribute("data-value") === "legacyfake") { sh.querySelector(".sh-trigger").click(); break; } } return true; })()');
+await sleep(300);
+const multiOpts = await ev('(() => { const opts = [...document.querySelectorAll(".widget-row .widget-type .sh-opt")].filter((o) => o.getAttribute("data-value") === "legacyfake"); return JSON.stringify(opts.map((o) => ({ label: (o.querySelector(".sh-opt-label") || {}).textContent || "", hasHint: !!o.querySelector(".sh-opt-hint") }))); })()');
+const mo = JSON.parse(multiOpts);
+check('an unknown type renders its raw name with an asterisk', mo.length === 1 && mo[0].label.indexOf('legacyfake') === 0 && mo[0].label.indexOf('*') !== -1, multiOpts);
+check('a type without a hint key falls back to no hint element', mo.length === 1 && mo[0].hasHint === false, multiOpts);
+
+// Back to the Pinger dialog for the keyboard and save-path checks.
+await cancelDialog();
+await sleep(300);
+await openService(0);
+await sleep(400);
 
 // Keyboard: open with ArrowDown, commit with Enter.
 await ev('(() => { const t = document.querySelector(".widget-row .widget-type .sh-trigger"); t.focus(); t.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); return true; })()');
@@ -159,6 +180,7 @@ check('a single plain ping writes the service-level ping field',
   pinger && pinger.ping === '10.9.9.9' && !('widget' in pinger) && !('widgets' in pinger), JSON.stringify(pinger));
 check('a multi-widget service keeps its shapes without a stray host',
   multi && multi.widget && Array.isArray(multi.widgets) && multi.widgets.length === 1 &&
+  multi.widgets[0].type === 'legacyfake' &&
   !('host' in multi.widget) && !('host' in multi.widgets[0]), JSON.stringify(multi));
 
 // Put the file back the way it was.

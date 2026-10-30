@@ -2,6 +2,20 @@
 
 ## ADDED Requirements
 
+### Requirement: 型別清單全覆蓋提示
+
+public/widget-types.js 列出的每一筆型別 SHALL 在四個內建語系檔（en、ja、zh-CN、zh-TW）的
+[widgets] section 都有提示 key，四份檔的 key 集合 SHALL 相同。檔案裡有、清單沒有的型別
+維持不留提示的退回行為。
+
+#### Scenario: 清單型別都有提示
+- **WHEN** 下拉展開列出型別清單裡的任一型別
+- **THEN** 該列右側顯示該型別的提示文字
+
+#### Scenario: 檔案裡的未知型別
+- **WHEN** 服務檔案含型別清單沒有的型別、下拉展開列出該型別
+- **THEN** 該列顯示原始名稱加星號、右側留空
+
 ### Requirement: 下拉選項可帶右側提示
 
 自繪下拉的每個選項列 SHALL 左側顯示選項名稱、右側靠齊顯示一句話提示；
