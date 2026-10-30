@@ -10,7 +10,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/verify-ini.mjs && node tests/verify-service-bookmark-fields.mjs && node tests/verify-service-widgets.mjs && node tests/verify-widgets.mjs && node tests/verify-collapse.mjs && node tests/verify-mobile.mjs && node tests/verify-visible-viewport.mjs && node tests/verify-i18n.mjs && node tests/verify-themes.mjs && node tests/verify-bookmarks.mjs && node tests/verify-bookmark-experience.mjs && node tests/verify-touch-drag.mjs && node tests/verify-appearance.mjs && node tests/verify-custom-css.mjs && node tests/verify-appearance-hints.mjs && node tests/verify-layout.mjs && node tests/verify-group-icon-shared.mjs",
+    "test": "node tests/verify-ini.mjs && node tests/verify-service-bookmark-fields.mjs && node tests/verify-service-widgets.mjs && node tests/verify-widgets.mjs && node tests/verify-collapse.mjs && node tests/verify-mobile.mjs && node tests/verify-visible-viewport.mjs && node tests/verify-i18n.mjs && node tests/verify-themes.mjs && node tests/verify-bookmarks.mjs && node tests/verify-bookmark-experience.mjs && node tests/verify-touch-drag.mjs && node tests/verify-appearance.mjs && node tests/verify-custom-css.mjs && node tests/verify-appearance-hints.mjs && node tests/verify-layout.mjs && node tests/verify-select-hints.mjs && node tests/verify-group-icon-shared.mjs",
     "test:group-icon": "node tests/verify-group-icon-shared.mjs",
     "test:widgets": "node tests/verify-service-widgets.mjs",
     "test:widgets-panel": "node tests/verify-widgets.mjs",
@@ -29,7 +29,8 @@
     "test:custom-css": "node tests/verify-custom-css.mjs",
     "test:appearance-hints": "node tests/verify-appearance-hints.mjs",
     "shots": "node tests/shots-visible.mjs",
-    "reindex": "node tools/reindex.mjs"
+    "reindex": "node tools/reindex.mjs",
+    "test:select-hints": "node tests/verify-select-hints.mjs"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",

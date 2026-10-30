@@ -791,13 +791,15 @@
             <div v-if="!editingItem.widgets.length" class="form-note">{{ t('item.noWidgets') }}</div>
             <div v-for="(w, wi) in editingItem.widgets" :key="wi" class="widget-row">
               <div class="widget-row-head">
-                <select v-model="w.type" class="widget-type">
-                  <option value="">{{ t('item.widgetNone') }}</option>
-                  <option v-for="tt in widgetTypes" :key="tt" :value="tt">{{ widgetTypeLabel(tt) }}</option>
-                  <!-- A type this editor does not know keeps its value instead of
-                       silently becoming "none" on a save. -->
-                  <option v-if="w.type && !widgetTypes.includes(w.type)" :value="w.type">{{ widgetTypeLabel(w.type) }}</option>
-                </select>
+                  <select-hint
+                    v-model="w.type"
+                    class="widget-type"
+                      :id="'widget-row-' + wi"
+                    :options="widgetTypesConcat(w.type)"
+                    :none-label="t('item.widgetNone')"
+                    :label-for="widgetTypeLabel"
+                    :hint-for="widgetHintFor"
+                  />
                 <button @click="removeWidgetRow(wi)" class="btn btn-icon btn-danger" type="button" :title="t('item.removeWidget')">
                   <i class="mdi mdi-delete"></i>
                 </button>
@@ -951,11 +953,14 @@
         <div class="form-grid">
           <div class="form-group">
             <label>{{ t('widget.type') }}</label>
-            <select v-model="editingWidget.type">
-              <option value="">{{ t('widget.typeNone') }}</option>
-              <option v-for="w in widgetTypes" :key="w" :value="w">{{ w }}</option>
-              <option v-if="editingWidget.type && !widgetTypes.includes(editingWidget.type)" :value="editingWidget.type">{{ editingWidget.type }} *</option>
-            </select>
+            <select-hint
+              v-model="editingWidget.type"
+              id="widget-modal-type"
+              :options="widgetTypesConcat(editingWidget.type)"
+              :none-label="t('widget.typeNone')"
+              :label-for="widgetTypeLabel"
+              :hint-for="widgetHintFor"
+            />
           </div>
           <div class="form-group">
             <label>{{ t('widget.label') }}</label>

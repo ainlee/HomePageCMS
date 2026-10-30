@@ -103,7 +103,7 @@ const openService = (index) => ev('(() => { const cards = document.querySelector
 // widget row carries its type, fields and the hideErrors tri-state.
 await openService(0);
 await sleep(400);
-const sonarr = await ev('(() => { const w = document.querySelector(".widget-row"); const sel = w && w.querySelector(".widget-type"); const labels = [...document.querySelectorAll(".widget-row-fields .form-group label")].map((l) => l.textContent.trim()); const inputs = [...document.querySelectorAll(".widget-row-fields .form-group input, .widget-row-fields .form-group select")]; const byLabel = {}; labels.forEach((t, i) => { byLabel[t] = inputs[i] ? inputs[i].value : ""; }); return JSON.stringify({ type: sel ? sel.value : "", byLabel }); })()');
+const sonarr = await ev('(() => { const w = document.querySelector(".widget-row"); const sel = w && w.querySelector(".widget-type"); const labels = [...document.querySelectorAll(".widget-row-fields .form-group label")].map((l) => l.textContent.trim()); const inputs = [...document.querySelectorAll(".widget-row-fields .form-group input, .widget-row-fields .form-group select")]; const byLabel = {}; labels.forEach((t, i) => { byLabel[t] = inputs[i] ? inputs[i].value : ""; }); return JSON.stringify({ type: sel ? sel.getAttribute("data-value") : "", byLabel }); })()');
 const s = JSON.parse(sonarr);
 check('the rich widget loads with its type', s.type === 'sonarr', s.type);
 check('the fields list loads comma-joined', s.byLabel['可見欄位'] === 'wanted, queued', s.byLabel['可見欄位']);
@@ -120,7 +120,7 @@ await ev('(() => { const b = document.querySelector(".modal .btn-secondary"); if
 await sleep(300);
 await openService(1);
 await sleep(400);
-const radarr = await ev('(() => { const rows = [...document.querySelectorAll(".widget-row .widget-type")].map((x) => x.value); return JSON.stringify(rows); })()');
+const radarr = await ev('(() => { const rows = [...document.querySelectorAll(".widget-row .widget-type")].map((x) => x.getAttribute("data-value")); return JSON.stringify(rows); })()');
 check('a multi-widget service loads every widget', JSON.parse(radarr).length === 3, radarr);
 
 // Save everything and read the file back.

@@ -67,22 +67,27 @@ await sleep(200);
 const dialogOpen = await waitFor('!!document.querySelector(".modal-wide h2 i.mdi-widget-edit")');
 check('the widget dialog opens', dialogOpen);
 await ev(`(() => {
-  const sel = document.querySelector('.modal-wide select');
-  if (!sel) return false;
-  const opt = [...sel.options].find((o) => o.value !== '');
-  if (opt) sel.value = opt.value;
-  sel.dispatchEvent(new Event('change'));
-  const input = document.querySelector('.modal-wide input');
-  if (input) { input.value = 'hello'; input.dispatchEvent(new Event('input')); }
+  const trigger = document.querySelector('#widget-modal-type .sh-trigger');
+  if (!trigger) return false;
+  trigger.click();
   return true;
 })()`);
-await sleep(200);
+// Wait for the listbox to render its options, then pick the first real one.
+for (let i = 0; i < 20; i++) {
+  const picked = await ev(`(() => {
+    const opt = [...document.querySelectorAll('#widget-modal-type .sh-opt')].find((o) => o.getAttribute('data-value') !== '');
+    if (opt) { opt.click(); return true; }
+    return false;
+  })()`);
+  if (picked) break;
+  await sleep(100);
+}
 await ev(`(() => {
   const btn = [...document.querySelectorAll('.modal-wide button')].find((b) => b.classList.contains('btn-primary'));
   if (btn) btn.click();
   return !!btn;
 })()`);
-await sleep(400);
+await sleep(800);
 const countAfterAdd = await ev('document.querySelectorAll(".widget-card").length');
 check('the new widget shows in the list', Number(countAfterAdd) === Number(cards) + 1, String(countAfterAdd));
 

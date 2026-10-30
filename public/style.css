@@ -1756,3 +1756,61 @@ body {
     min-width: 250px;
   }
 }
+
+/* The widget-type picker is a custom dropdown: native <option> cannot lay out
+   a name on the left and a one-line hint on the right of the same row. The
+   trigger mirrors .form-group select so the field does not jump when it is
+   swapped in; the list hangs under it. A hint wider than its column scrolls
+   as a marquee (two copies, seamless) instead of being cut off. */
+.select-hint { position: relative; }
+.select-hint .sh-trigger {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 8px 10px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); font-size: 13px;
+  cursor: pointer; text-align: left;
+}
+.select-hint .sh-trigger:focus { border-color: var(--accent); outline: none; }
+.select-hint .sh-trigger-label { font-weight: 600; }
+.select-hint .sh-trigger-hint {
+  flex: 1; min-width: 0; text-align: right; color: var(--text-dim);
+  font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.select-hint .sh-caret { margin-left: auto; color: var(--text-dim); font-size: 16px; flex-shrink: 0; }
+.select-hint .sh-list {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 30;
+  margin-top: 4px; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  max-height: 280px; overflow-y: auto; padding: 4px;
+}
+.select-hint .sh-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; border: 0; background: transparent; color: var(--text);
+  font-size: 13px; cursor: pointer; border-radius: calc(var(--radius) - 4px); text-align: left;
+}
+.select-hint .sh-opt:hover,
+.select-hint .sh-opt.active { background: var(--bg-hover); }
+.select-hint .sh-opt-label {
+  font-weight: 600; flex-shrink: 0; max-width: 45%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.select-hint .sh-opt-hint {
+  flex: 1; min-width: 0; text-align: right; color: var(--text-dim);
+  font-size: 11px; overflow: hidden;
+}
+.select-hint .sh-hint-run { display: inline-flex; white-space: nowrap; }
+/* Each copy carries its own right margin so the loop gap is uniform; the
+   marquee then runs exactly one copy + gap (50% of the two-copy run) before
+   the pattern repeats, which is what makes the seam invisible. */
+.select-hint .sh-hint-copy { flex-shrink: 0; margin-right: 24px; }
+.select-hint .sh-marquee .sh-hint-run { animation: sh-marquee 8s linear infinite; }
+@keyframes sh-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+/* A user who prefers reduced motion gets a static, ellipsised hint instead of
+   the scroll: the tail of the text stays reachable, nothing moves. */
+.select-hint .sh-clip .sh-hint-run { animation: none; transform: none; }
+.select-hint .sh-clip .sh-opt-hint { text-overflow: ellipsis; }
+@media (prefers-reduced-motion: reduce) {
+  .select-hint .sh-marquee .sh-hint-run { animation: none; transform: none; }
+}

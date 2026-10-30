@@ -1,4 +1,4 @@
-const { createApp, ref, reactive, computed, onMounted, onUnmounted, watch } = Vue;
+const { createApp, ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } = Vue;
 // The colour ramp maths, shared with the server (lib/ramp.js).
 const ramp = window.HomepageRamp;
 // The path the editor is mounted under (e.g. /cms); empty when it runs at the
@@ -76,6 +76,150 @@ const IconField = {
     '  </div>' +
     '</div>'
 };
+
+  // A dropdown whose rows carry a right-aligned one-line hint next to the
+  // option name. Native <select> options cannot lay out two columns, so the
+  // widget-type pickers (which list 170+ raw type names) use this instead: the
+  // trigger shows the current name plus its hint, the list shows name-left /
+  // hint-right per row, and a hint that is wider than its column scrolls as
+  // a marquee (static under prefers-reduced-motion). Keyboard mirrors a
+  // native select: open with Enter/Space, move with arrows, commit with
+  // Enter, close with Esc or a click outside.
+  const SelectHint = {
+    props: {
+      modelValue: { type: String, default: '' },
+      options: { type: Array, default: () => [] },
+      noneLabel: { type: String, default: '' },
+      labelFor: { type: Function, default: (v) => v },
+      hintFor: { type: Function, default: () => '' },
+      id: { type: String, default: 'select-hint' }
+    },
+    emits: ['update:modelValue'],
+    setup(props, { emit }) {
+      const open = ref(false);
+      const activeIndex = ref(0);
+      const rootEl = ref(null);
+      const triggerEl = ref(null);
+      const optEls = ref([]);
+      const reducedMotion = ref(false);
+
+      // The '' option is offered whenever a noneLabel is given, so a row can
+      // be cleared back to "no widget type".
+      const allOpts = computed(() => {
+        const out = [];
+        if (props.noneLabel) out.push({ value: '', label: props.noneLabel, hint: '' });
+        for (const o of props.options) out.push({ value: o, label: props.labelFor(o), hint: props.hintFor(o) });
+        return out;
+      });
+      const currentLabel = computed(() => (props.modelValue ? props.labelFor(props.modelValue) : props.noneLabel));
+      const currentHint = computed(() => (props.modelValue ? props.hintFor(props.modelValue) : ''));
+      // Stable option id the listbox points at. Built by a helper so the
+      // template's string literals never embed single quotes (an embedded
+      // quote would truncate the JS string and break the whole page).
+      function optId(i) { return props.id + '-opt-' + i; }
+      const activeDescendant = computed(() => optId(activeIndex.value));
+
+      function syncActive() {
+        const i = allOpts.value.findIndex((o) => o.value === props.modelValue);
+        activeIndex.value = i < 0 ? 0 : i;
+      }
+
+      // A hint only marquee-scrolls when it is actually wider than its
+      // column; otherwise it sits still. Measuring after open (fonts may have
+      // loaded since first paint) and after a language switch (the text
+      // changes length) keeps the class in step with the content.
+      function measureOverflow() {
+        for (const el of optEls.value) {
+          if (!el) continue;
+          const hint = el.querySelector('.sh-opt-hint');
+          const copy = hint && hint.querySelector('.sh-hint-copy');
+          if (!hint || !copy) { el.classList.remove('sh-marquee', 'sh-clip'); continue; }
+          // Compare the single copy of the text (the duplicated second copy
+          // would overflow every column and marquee everything): one copy
+          // plus the gap between copies against the visible column width.
+          const copyWidth = copy.getBoundingClientRect().width;
+          const overflows = copyWidth + 24 > hint.clientWidth + 2;
+          el.classList.toggle('sh-marquee', overflows && !reducedMotion.value);
+          el.classList.toggle('sh-clip', overflows && reducedMotion.value);
+        }
+      }
+      function onOpen() {
+        open.value = true;
+        syncActive();
+        nextTick(() => {
+          const active = optEls.value[activeIndex.value];
+          if (active) active.scrollIntoView({ block: 'nearest' });
+          measureOverflow();
+        });
+      }
+      function onClose() { open.value = false; }
+      function toggle() { open.value ? onClose() : onOpen(); }
+      function moveActive(delta) {
+        const n = allOpts.value.length;
+        if (!n) return;
+        activeIndex.value = ((activeIndex.value + delta) % n + n) % n;
+        nextTick(() => { const el = optEls.value[activeIndex.value]; if (el) el.scrollIntoView({ block: 'nearest' }); });
+      }
+      function choose(opt) {
+        if (opt.value !== props.modelValue) emit('update:modelValue', opt.value);
+        onClose();
+        if (triggerEl.value) triggerEl.value.focus();
+      }
+      function onKeydown(e) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); open.value ? moveActive(1) : onOpen(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); open.value ? moveActive(-1) : onOpen(); }
+        else if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (!open.value) onOpen(); else { const o = allOpts.value[activeIndex.value]; if (o) choose(o); }
+        } else if (e.key === 'Escape') { if (open.value) { e.preventDefault(); onClose(); } }
+      }
+      function onOutside(e) { if (open.value && rootEl.value && !rootEl.value.contains(e.target)) onClose(); }
+      function onResize() { if (open.value) measureOverflow(); }
+
+      watch(open, (v) => { if (v) nextTick(measureOverflow); });
+      watch(allOpts, () => { if (open.value) nextTick(measureOverflow); });
+
+      onMounted(() => {
+        reducedMotion.value = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        document.addEventListener('mousedown', onOutside);
+        window.addEventListener('resize', onResize);
+      });
+      onUnmounted(() => {
+        document.removeEventListener('mousedown', onOutside);
+        window.removeEventListener('resize', onResize);
+      });
+
+      return {
+        open, activeIndex, allOpts, currentLabel, currentHint, activeDescendant,
+        rootEl, triggerEl,
+        toggle, onKeydown, choose, optId,
+        registerOptEl: (el, i) => { if (el) optEls.value[i] = el; }
+      };
+    },
+    template:
+      '<div class="select-hint" ref="rootEl" :id="id" :data-value="modelValue">' +
+      '  <button type="button" class="sh-trigger" ref="triggerEl" ' +
+      '    :aria-expanded="open" aria-haspopup="listbox" :aria-activedescendant="activeDescendant" ' +
+      '    @click="toggle" @keydown="onKeydown">' +
+      '    <span class="sh-trigger-label">{{ currentLabel }}</span>' +
+      '    <span class="sh-trigger-hint" v-if="currentHint">{{ currentHint }}</span>' +
+      '    <i class="mdi mdi-menu-down sh-caret"></i>' +
+      '  </button>' +
+      '  <div v-if="open" class="sh-list" role="listbox" :aria-activedescendant="activeDescendant">' +
+      '    <button type="button" v-for="(o, i) in allOpts" :key="o.value" ' +
+      '      class="sh-opt" :class="{ active: i === activeIndex }" ' +
+      '      :id="optId(i)" :data-value="o.value" :ref="(el) => registerOptEl(el, i)" ' +
+      '      role="option" :aria-selected="o.value === modelValue" ' +
+      '      @click="choose(o)" @mouseenter="activeIndex = i">' +
+      '      <span class="sh-opt-label">{{ o.label }}</span>' +
+      '      <span class="sh-opt-hint" v-if="o.hint">' +
+      '        <span class="sh-hint-run"><span class="sh-hint-copy">{{ o.hint }}</span>' +
+      '        <span class="sh-hint-copy" aria-hidden="true">{{ o.hint }}</span></span>' +
+      '      </span>' +
+      '    </button>' +
+      '  </div>' +
+      '</div>'
+  };
 
 const cmsApp = createApp({
   setup() {
@@ -910,6 +1054,24 @@ const cmsApp = createApp({
       }
     }
 
+      // One-line hint for a widget type, shown on the right of each row in the
+      // type picker. The key is widgets.<type> in the locale files; an unknown
+      // type falls back to the bundled zh-TW catalog, then shows nothing.
+      function widgetHintFor(type) {
+        if (!type) return '';
+        const key = 'widgets.' + type;
+        if (i18n.catalog[key]) return i18n.catalog[key];
+        if (i18n.fallback[key]) return i18n.fallback[key];
+        return '';
+      }
+      // All known types plus any value the file still carries, so a legacy
+      // type is never silently dropped to none on save.
+      function widgetTypesConcat(modelValue) {
+        const out = widgetTypes.value.slice();
+        if (modelValue && !out.includes(modelValue)) out.push(modelValue);
+        return out;
+      }
+
     // The icon preview helpers (isMdiIcon, mdiClassOf, iconPreviewUrl) live at
     // module scope next to the shared icon-field component; the return object
     // below still exposes them so the in-list previews can use them.
@@ -1262,6 +1424,12 @@ const cmsApp = createApp({
       if (!widgets.length) return;
       if (widgets.length === 1) {
         const w = widgets[0];
+        // A single ping widget with nothing but its host is the service-level
+        // ping field: upstream renders it from conf.ping, not from a widget
+        // object, so the plain shape is the one that actually works there.
+        const pingOnly = w.type === 'ping' && w.host.trim() !== '' &&
+          WIDGET_FIELDS.every((k) => { const v = w[k]; return k === 'host' || String(v || '').trim() === ''; });
+        if (pingOnly) { conf.ping = w.host.trim(); return; }
         if (w.dialect.startsWith('legacy') && legacyIsPlain(w)) {
           if (w.dialect === 'legacy-customapi') conf.customapi = w.url.trim();
           else if (w.dialect === 'legacy-container') conf.container = w.container.trim();
@@ -2731,7 +2899,7 @@ const cmsApp = createApp({
       resetAllCustomCss, confirmResetAllCustomCss, probeFontUrl,
       movingItem, movingFromGroup, dragOverGroup, dropIndex, draggingItem, backups, toast,
       totalItems, activeGroups, activeTotalItems,
-      widgetTypes, widgetTypeLabel, widgetValueHint, itemWidgetBadges,
+      widgetTypes, widgetTypeLabel, widgetValueHint, widgetHintFor, widgetTypesConcat, itemWidgetBadges,
       addWidgetRow, removeWidgetRow, iconPreviewUrl, isMdiIcon, mdiClassOf,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,
       addItem, editItem, saveItem, deleteItem,
@@ -2763,6 +2931,10 @@ const cmsApp = createApp({
 
 // One shared icon input + live preview for every group / item dialog.
 cmsApp.component('icon-field', IconField);
+
+  // The widget-type picker uses a custom dropdown so each row can show a
+  // one-line hint on the right; native options cannot lay out two columns.
+  cmsApp.component('select-hint', SelectHint);
 
 // Vue catches render errors itself, so the global error handler never sees them and
 // the page would just go blank. Registering the handler here as well turns a failed
