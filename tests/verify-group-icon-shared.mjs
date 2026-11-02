@@ -68,7 +68,7 @@ const svcGroupModal = JSON.parse(await ev(`(() => {
   return JSON.stringify({ input: !!m.querySelector('input'), wrap: !!m.querySelector('.icon-input-wrap'), labels: m.querySelectorAll('label').length });
 })()`));
 check('the service group dialog renders the shared icon field',
-  svcGroupModal.input && svcGroupModal.wrap && svcGroupModal.labels === 2, JSON.stringify(svcGroupModal));
+  svcGroupModal.input && svcGroupModal.wrap && svcGroupModal.labels === 8, JSON.stringify(svcGroupModal));
 await click('.modal-overlay .modal .btn-secondary');
 await sleep(300);
 
@@ -84,7 +84,7 @@ const bmGroupModal = JSON.parse(await ev(`(() => {
   return JSON.stringify({ name: !!m.querySelector('#bookmark-group-name'), icon: !!m.querySelector('#bookmark-group-icon'), wrap: !!m.querySelector('.icon-input-wrap'), labels: m.querySelectorAll('label').length });
 })()`));
 check('the bookmark group dialog renders the shared icon field',
-  bmGroupModal.name && bmGroupModal.icon && bmGroupModal.wrap && bmGroupModal.labels === 2, JSON.stringify(bmGroupModal));
+  bmGroupModal.name && bmGroupModal.icon && bmGroupModal.wrap && bmGroupModal.labels === 8, JSON.stringify(bmGroupModal));
 
 // 3. Typing an mdi icon shows the live glyph preview inside the shared field.
 await setInput('#bookmark-group-name', '共用圖示測試群');

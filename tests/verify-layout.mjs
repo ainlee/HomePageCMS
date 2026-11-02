@@ -60,27 +60,18 @@ check('the layout panel has a group section', hasGroups);
 const switchLabels = await ev('JSON.stringify([...document.querySelectorAll(".layout-grid .form-group label")].map((l) => l.textContent.trim()).slice(0, 4))');
 check('the global switches form is there', JSON.parse(switchLabels).length === 4, switchLabels);
 
-// Add a layout group through the dialog, save the panel, and check the API.
+// Add an unbound layout entry through the dialog, save the panel, and check
+// the API. The dialog is addressed by its own field id and heading, never by
+// a bare .modal-wide selector that would also match the settings dialog.
 await click('.layout-section-head .btn');
 await waitFor('!!document.querySelector(".modal-overlay .modal-wide h2 i.mdi-view-grid-edit")');
 check('the layout group dialog opens',
   await ev('!!document.querySelector(".modal-overlay .modal-wide h2 i.mdi-view-grid-edit")'));
-// Fill the group name. The dialog fields are filled through the DOM: find the
-// input next to the group name label.
-const filled = await ev(`(() => {
-  const inputs = [...document.querySelectorAll('.modal-wide .form-group input')];
-  if (!inputs.length) return 'no inputs';
-  inputs[0].value = '測試分頁群';
-  inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-  return inputs.length;
-})()`);
-check('the dialog accepts a group name', filled === 1 || filled, String(filled));
+// Fill the entry name through its own id, scoped to the layout group dialog.
+const filled = await ev('(() => { const modal = document.querySelector(".modal-overlay .modal-wide h2 i.mdi-view-grid-edit").closest(".modal"); const input = modal.querySelector("#layout-group-name"); if (!input) return "no input"; input.value = "測試分頁群"; input.dispatchEvent(new Event("input", { bubbles: true })); return "ok"; })()');
+check('the dialog accepts a group name', filled === 'ok', String(filled));
 await sleep(200);
-await ev(`(() => {
-  const btn = [...document.querySelectorAll('.modal-wide button')].find((b) => b.classList.contains('btn-primary'));
-  if (btn) btn.click();
-  return !!btn;
-})()`);
+await ev('(() => { const modal = document.querySelector(".modal-overlay .modal-wide h2 i.mdi-view-grid-edit").closest(".modal"); const btn = [...modal.querySelectorAll("button")].find((b) => b.classList.contains("btn-primary")); if (btn) btn.click(); return !!btn; })()');
 await sleep(500);
 const rowCount = await ev('document.querySelectorAll(".layout-group-row").length');
 check('the new group shows in the list', rowCount === 1, String(rowCount));
