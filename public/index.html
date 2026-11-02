@@ -107,6 +107,9 @@
             <div class="group-header">
               <i class="mdi drag-handle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleGroup(group)"></i>
               <span class="group-name" @click="toggleGroup(group)">{{ group.name }}</span>
+              <span v-if="groupTabOf(group.name)" class="group-tab-tag">
+                <i class="mdi mdi-tab"></i> {{ groupTabOf(group.name) }}
+              </span>
               <span class="group-badge">{{ group.items.length }}</span>
               <div class="group-actions">
                 <button @click.stop="editGroup(group)" class="btn btn-icon" :title="t('group.edit')">
@@ -173,9 +176,12 @@
               <div class="group-header">
                 <i class="mdi drag-handle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleGroup(group)"></i>
                 <span class="group-name" @click="toggleGroup(group)">{{ group.name }}</span>
-                <span class="group-badge">{{ group.items.length }}</span>
-                <div class="group-actions">
-                  <button @click.stop="editBookmarkGroup(group)" class="btn btn-icon" :title="t('group.edit')">
+              <span v-if="groupTabOf(group.name)" class="group-tab-tag">
+                <i class="mdi mdi-tab"></i> {{ groupTabOf(group.name) }}
+              </span>
+              <span class="group-badge">{{ group.items.length }}</span>
+              <div class="group-actions">
+                <button @click.stop="editBookmarkGroup(group)" class="btn btn-icon" :title="t('group.edit')">
                     <i class="mdi mdi-pencil"></i>
                   </button>
                   <button @click.stop="deleteBookmarkGroup(gi)" class="btn btn-icon btn-danger" :title="t('group.delete')">
@@ -426,18 +432,15 @@
 
             <div class="layout-section">
               <div class="layout-section-head">
-                <h3 class="layout-title">{{ t('layout.groupsTitle') }}</h3>
+                <h3 class="layout-title">{{ t('layout.unboundTitle') }}</h3>
                 <button @click="addLayoutGroup" class="btn btn-small btn-secondary">
                   <i class="mdi mdi-plus"></i> {{ t('layout.addGroup') }}
                 </button>
               </div>
-              <div v-for="(lg, li) in layoutGroups" :key="lg.name" class="layout-group-row">
+              <div v-for="(lg, li) in layoutOrphans" :key="lg.name" class="layout-group-row">
                 <div class="layout-group-meta">
                   <i v-if="lg.icon" class="mdi layout-group-icon" :class="lg.icon"></i>
                   <span class="layout-group-name">{{ lg.name }}</span>
-                  <span v-if="!knownGroupNames.has(lg.name)" class="layout-group-tag layout-orphan">
-                    <i class="mdi mdi-link-off"></i> {{ t('layout.orphan') }}
-                  </span>
                   <span v-if="lg.tab" class="layout-group-tag">
                     <i class="mdi mdi-tab"></i> {{ lg.tab }}
                   </span>
@@ -446,15 +449,39 @@
                   </span>
                 </div>
                 <div class="layout-group-actions">
-                  <button @click="editLayoutGroup(lg, li)" class="btn btn-icon" :title="t('layout.editGroup')">
+                  <button @click="editOrphanLayoutGroup(lg)" class="btn btn-icon" :title="t('layout.editGroup')">
                     <i class="mdi mdi-pencil"></i>
                   </button>
-                  <button @click="deleteLayoutGroup(li)" class="btn btn-icon btn-danger" :title="t('layout.deleteGroup')">
+                  <button @click="deleteOrphanLayoutGroup(lg)" class="btn btn-icon btn-danger" :title="t('layout.deleteGroup')">
                     <i class="mdi mdi-delete"></i>
                   </button>
                 </div>
               </div>
-              <p v-if="!layoutGroups.length" class="layout-empty">{{ t('layout.noGroups') }}</p>
+              <p v-if="!layoutOrphans.length" class="layout-empty">{{ t('layout.noUnbound') }}</p>
+            </div>
+
+            <div class="layout-section">
+              <h3 class="layout-title">{{ t('layout.overviewTitle') }}</h3>
+              <p class="layout-overview-hint">{{ t('layout.overviewHint') }}</p>
+              <div v-for="(bucket, bi) in layoutTabOverview" :key="bucket.name || '__all__'" class="tab-overview-bucket">
+                <div class="tab-overview-name">
+                  <i class="mdi" :class="bucket.name ? 'mdi-tab' : 'mdi-tab-plus'"></i>
+                  <span v-if="bucket.name">{{ bucket.name }}</span>
+                  <span v-else>{{ t('layout.unassigned') }}</span>
+                </div>
+                <div class="tab-overview-chips">
+                  <button v-for="g in bucket.groups" :key="g.name"
+                          class="tab-overview-chip"
+                          :class="{ 'is-bound': g.bound, 'is-orphan': !g.bound }"
+                          @click="openGroupFromOverview(g)">
+                    <i v-if="g.icon" class="mdi" :class="g.icon"></i>
+                    <span>{{ g.name }}</span>
+                    <i v-if="!g.bound" class="mdi mdi-link-off chip-orphan-mark"></i>
+                  </button>
+                  <span v-if="!bucket.groups.length" class="tab-overview-empty">{{ t('layout.overviewEmpty') }}</span>
+                </div>
+              </div>
+              <p v-if="!layoutTabOverview.length" class="layout-empty">{{ t('layout.overviewNone') }}</p>
             </div>
 
             <div class="layout-section">
@@ -672,14 +699,71 @@
 
     <!-- Group Modal -->
     <div v-if="showGroupModal" class="modal-overlay" @click.self="closeOnOverlayClick($event, () => { showGroupModal = false })">
-      <div class="modal">
+      <div class="modal modal-wide">
         <h2><i class="mdi mdi-folder-edit"></i> {{ editingGroupId ? t('group.titleEdit') : t('group.titleNew') }}</h2>
         <div class="form-group">
           <label>{{ t('group.name') }}</label>
-          <input v-model="editingGroup.name" type="text" :placeholder="t('group.namePlaceholder')">
+          <input id="svc-group-name" v-model="editingGroup.name" type="text" :placeholder="t('group.namePlaceholder')">
         </div>
         <icon-field v-model="editingGroup.icon" :label="t('group.icon')"
                     :placeholder="t('group.iconPlaceholder')"></icon-field>
+
+        <h3 class="modal-section-title"><i class="mdi mdi-palette-outline"></i> {{ t('group.appearance') }}</h3>
+        <div class="form-grid">
+          <div class="form-group tab-field">
+            <label>{{ t('group.tab') }}</label>
+            <input id="svc-group-tab" v-model="editingGroup.tab" list="svc-tab-options" type="text"
+                   :placeholder="t('group.tabPlaceholder')" autocomplete="off">
+            <datalist id="svc-tab-options">
+              <option v-for="tb in availableTabs" :key="tb" :value="tb"></option>
+            </datalist>
+            <div v-if="editingGroup.tab" class="tab-chip-row">
+              <span class="tab-chip">
+                <i class="mdi mdi-tab"></i> {{ editingGroup.tab }}
+              </span>
+              <button type="button" class="tab-chip-x" @click="editingGroup.tab = ''" :title="t('group.tabClear')">
+                <i class="mdi mdi-close"></i>
+              </button>
+            </div>
+            <p class="field-hint">{{ t('group.tabHint') }}</p>
+          </div>
+          <div class="form-group">
+            <label>{{ t('group.style') }}</label>
+            <select v-model="editingGroup.style">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="columns">columns</option>
+              <option value="row">row</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('group.columns') }}</label>
+            <input v-model="editingGroup.columns" type="text" inputmode="numeric" :placeholder="t('layout.columnsHint')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('group.header') }}</label>
+            <select v-model="editingGroup.header">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="true">{{ t('layout.on') }}</option>
+              <option value="false">{{ t('layout.off') }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('group.initiallyCollapsed') }}</label>
+            <select v-model="editingGroup.initiallyCollapsed">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="true">{{ t('layout.on') }}</option>
+              <option value="false">{{ t('layout.off') }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('group.useEqualHeights') }}</label>
+            <select v-model="editingGroup.useEqualHeights">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="true">{{ t('layout.on') }}</option>
+              <option value="false">{{ t('layout.off') }}</option>
+            </select>
+          </div>
+        </div>
         <div class="modal-actions">
           <button @click="showGroupModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
           <button @click="saveGroup" class="btn btn-primary">{{ t('common.confirm') }}</button>
@@ -694,7 +778,7 @@
         <div class="form-grid">
           <div class="form-group">
             <label>{{ t('layout.groupName') }}</label>
-            <input v-model="editingLayoutGroup.name" type="text" :placeholder="t('layout.groupNameHint')">
+            <input id="layout-group-name" v-model="editingLayoutGroup.name" type="text" :placeholder="t('layout.groupNameHint')">
           </div>
           <div class="form-group">
             <label>{{ t('layout.tab') }}</label>
@@ -886,7 +970,7 @@
 
     <!-- Bookmark Group Modal -->
     <div v-if="showBookmarkGroupModal" class="modal-overlay" @click.self="closeOnOverlayClick($event, () => { showBookmarkGroupModal = false })">
-      <div class="modal bookmark-group-modal">
+      <div class="modal modal-wide bookmark-group-modal">
         <h2><i class="mdi mdi-folder-edit"></i> {{ editingBookmarkGroupId ? t('bookmark.groupTitleEdit') : t('bookmark.groupTitleNew') }}</h2>
         <div class="form-group">
           <label>{{ t('bookmark.groupName') }}</label>
@@ -896,6 +980,63 @@
         <icon-field input-id="bookmark-group-icon" v-model="editingBookmarkGroup.icon" :label="t('group.icon')"
                     :placeholder="t('group.iconPlaceholder')" enter-to-submit
                     @submit="saveBookmarkGroup"></icon-field>
+
+        <h3 class="modal-section-title"><i class="mdi mdi-palette-outline"></i> {{ t('group.appearance') }}</h3>
+        <div class="form-grid">
+          <div class="form-group tab-field">
+            <label>{{ t('group.tab') }}</label>
+            <input id="bm-group-tab" v-model="editingBookmarkGroup.tab" list="bm-tab-options" type="text"
+                   :placeholder="t('group.tabPlaceholder')" autocomplete="off">
+            <datalist id="bm-tab-options">
+              <option v-for="tb in availableTabs" :key="tb" :value="tb"></option>
+            </datalist>
+            <div v-if="editingBookmarkGroup.tab" class="tab-chip-row">
+              <span class="tab-chip">
+                <i class="mdi mdi-tab"></i> {{ editingBookmarkGroup.tab }}
+              </span>
+              <button type="button" class="tab-chip-x" @click="editingBookmarkGroup.tab = ''" :title="t('group.tabClear')">
+                <i class="mdi mdi-close"></i>
+              </button>
+            </div>
+            <p class="field-hint">{{ t('group.tabHint') }}</p>
+          </div>
+          <div class="form-group">
+            <label>{{ t('group.style') }}</label>
+            <select v-model="editingBookmarkGroup.style">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="columns">columns</option>
+              <option value="row">row</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('group.columns') }}</label>
+            <input v-model="editingBookmarkGroup.columns" type="text" inputmode="numeric" :placeholder="t('layout.columnsHint')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('group.header') }}</label>
+            <select v-model="editingBookmarkGroup.header">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="true">{{ t('layout.on') }}</option>
+              <option value="false">{{ t('layout.off') }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('group.initiallyCollapsed') }}</label>
+            <select v-model="editingBookmarkGroup.initiallyCollapsed">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="true">{{ t('layout.on') }}</option>
+              <option value="false">{{ t('layout.off') }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('group.useEqualHeights') }}</label>
+            <select v-model="editingBookmarkGroup.useEqualHeights">
+              <option value="">{{ t('layout.notSet') }}</option>
+              <option value="true">{{ t('layout.on') }}</option>
+              <option value="false">{{ t('layout.off') }}</option>
+            </select>
+          </div>
+        </div>
         <div class="modal-actions">
           <button @click="showBookmarkGroupModal = false" class="btn btn-secondary">{{ t('settings.cancel') }}</button>
           <button @click="saveBookmarkGroup" class="btn btn-primary">{{ t('common.confirm') }}</button>

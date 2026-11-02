@@ -683,7 +683,10 @@ const cmsApp = createApp({
     // first visit and stays until it is saved or explicitly skipped.
     const isFirstRun = ref(false);
 
-    const editingGroup = reactive({ name: '', icon: '' });
+    const editingGroup = reactive({
+      name: '', icon: '', tab: '', style: '', columns: '',
+      header: '', initiallyCollapsed: '', useEqualHeights: ''
+    });
     const editingItem = reactive({
       name: '', href: '', description: '', target: '',
       icon: '', iconType: 'mdi',
@@ -691,7 +694,10 @@ const cmsApp = createApp({
       server: '', weight: '', namespace: '', app: '', podSelector: '',
       widgets: []
     });
-    const editingBookmarkGroup = reactive({ name: '', icon: '' });
+    const editingBookmarkGroup = reactive({
+      name: '', icon: '', tab: '', style: '', columns: '',
+      header: '', initiallyCollapsed: '', useEqualHeights: ''
+    });
     const editingBookmarkItem = reactive({ name: '', href: '', abbr: '', description: '', icon: '', target: '' });
     // One information widget (widgets.yaml): its type and the options the
     // editor models. source keeps the raw object so unmodelled options
@@ -1631,53 +1637,93 @@ const cmsApp = createApp({
 
     // Group CRUD
 
-    // The settings.yaml layout entry of a group, shared by the service and the
-    // bookmark group dialogs so the two cannot drift: read the icon the group's
-    // layout entry carries, and (re)write it when the group is created or
-    // renamed.
-    function groupLayoutIconOf(name) {
-      const entry = layoutGroups.value.find((g) => g.name === name);
-      return entry ? (entry.icon || '') : '';
+    // The layout (settings.yaml) appearance of a group: the entry, shared by the
+    // service and the bookmark group dialogs so the two cannot drift. Every
+    // appearance field is a plain string ('' = not set); the dialog values
+    // override the entry, and deleting the group removes its entry outright.
+    const GROUP_APPEARANCE_FIELDS = ['icon', 'tab', 'style', 'columns', 'header', 'initiallyCollapsed', 'useEqualHeights'];
+
+    function layoutEntryOf(name) {
+      return layoutGroups.value.find((g) => g.name === name) || null;
     }
 
-    function syncGroupLayoutIcon(oldName, newName, icon) {
-      const li = oldName ? layoutGroups.value.findIndex((x) => x.name === oldName) : -1;
-      if (li >= 0) {
-        layoutGroups.value[li].name = newName;
-        setOrDelete(layoutGroups.value[li], 'icon', icon);
-      } else if (icon) {
-        layoutGroups.value.push({ name: newName, icon, source: {} });
+    // The tab a group renders under, straight from its layout entry. Shown as a
+    // small tag on the group card so the grouping is visible without opening
+    // the dialog.
+    function groupTabOf(name) {
+      const entry = layoutEntryOf(name);
+      return entry ? String(entry.tab || '').trim() : '';
+    }
+
+    function appearanceOf(name) {
+      const entry = layoutEntryOf(name);
+      const out = {};
+      for (const f of GROUP_APPEARANCE_FIELDS) {
+        out[f] = entry ? String(entry[f] !== undefined && entry[f] !== null ? entry[f] : '') : '';
       }
+      return out;
+    }
+
+    function syncGroupAppearance(oldName, newName, values) {
+      let li = oldName ? layoutGroups.value.findIndex((x) => x.name === oldName) : -1;
+      if (li < 0 && !oldName) {
+        // Creating a brand-new group: reuse a layout entry that already
+        // carries this name (loaded from settings.yaml) instead of pushing a
+        // duplicate, or the card's tag would read the stale entry first.
+        li = layoutGroups.value.findIndex((x) => x.name === newName);
+      }
+      let entry;
+      if (li >= 0) {
+        entry = layoutGroups.value[li];
+        if (oldName) entry.name = newName;
+      } else {
+        entry = { name: newName, source: {} };
+        layoutGroups.value.push(entry);
+      }
+      for (const f of GROUP_APPEARANCE_FIELDS) {
+        setOrDelete(entry, f, String(values[f] || '').trim());
+      }
+    }
+
+    // Remove this group's layout entry (every duplicate, a stale reload can
+    // leave more than one under the same name). A tab the other groups still
+    // carry is left alone: a tab is just a label the groups paint on
+    // themselves, so clearing one group's label cannot wipe the others'.
+    function deleteGroupLayoutEntry(name) {
+      layoutGroups.value = layoutGroups.value.filter((x) => x.name !== name);
     }
 
     function addGroup() {
       editingGroupId.value = null;
-      editingGroup.name = '';
-      editingGroup.icon = '';
+      Object.assign(editingGroup, { name: '', icon: '', tab: '', style: '', columns: '', header: '', initiallyCollapsed: '', useEqualHeights: '' });
       showGroupModal.value = true;
     }
 
     function editGroup(group) {
       editingGroupId.value = group.id;
-      editingGroup.name = group.name;
-      editingGroup.icon = groupLayoutIconOf(group.name);
+      const app = appearanceOf(group.name);
+      Object.assign(editingGroup, { name: group.name, ...app });
       showGroupModal.value = true;
     }
 
     function saveGroup() {
       if (!editingGroup.name.trim()) { showToast(t('group.nameRequired'), 'error'); return; }
       const newName = editingGroup.name.trim();
-      const icon = editingGroup.icon.trim();
+      const values = {
+        icon: editingGroup.icon, tab: editingGroup.tab, style: editingGroup.style,
+        columns: editingGroup.columns, header: editingGroup.header,
+        initiallyCollapsed: editingGroup.initiallyCollapsed, useEqualHeights: editingGroup.useEqualHeights
+      };
       if (editingGroupId.value) {
         const g = groups.value.find(g => g.id === editingGroupId.value);
         if (g) {
           const oldName = g.name;
           g.name = newName;
-          syncGroupLayoutIcon(oldName, newName, icon);
+          syncGroupAppearance(oldName, newName, values);
         }
       } else {
         groups.value.push({ id: uid(), name: newName, collapsed: false, items: [] });
-        syncGroupLayoutIcon(null, newName, icon);
+        syncGroupAppearance(null, newName, values);
       }
       showGroupModal.value = false;
     }
@@ -1686,6 +1732,7 @@ const cmsApp = createApp({
       const g = groups.value[gi];
       if (!confirm(t('group.confirmDelete', { name: g.name, count: g.items.length }))) return;
       groups.value.splice(gi, 1);
+      deleteGroupLayoutEntry(g.name);
     }
 
     function toggleGroup(group) { group.collapsed = !group.collapsed; }
@@ -1693,34 +1740,37 @@ const cmsApp = createApp({
     // Bookmark CRUD
     function addBookmarkGroup() {
       editingBookmarkGroupId.value = null;
-      editingBookmarkGroup.name = '';
-      editingBookmarkGroup.icon = '';
+      Object.assign(editingBookmarkGroup, { name: '', icon: '', tab: '', style: '', columns: '', header: '', initiallyCollapsed: '', useEqualHeights: '' });
       showBookmarkGroupModal.value = true;
     }
 
     function editBookmarkGroup(group) {
       editingBookmarkGroupId.value = group.id;
-      editingBookmarkGroup.name = group.name;
-      editingBookmarkGroup.icon = groupLayoutIconOf(group.name);
+      const app = appearanceOf(group.name);
+      Object.assign(editingBookmarkGroup, { name: group.name, ...app });
       showBookmarkGroupModal.value = true;
     }
 
     function saveBookmarkGroup() {
       const name = editingBookmarkGroup.name.trim();
       if (!name) { showToast(t('bookmark.groupNameRequired'), 'error'); return; }
-      const icon = editingBookmarkGroup.icon.trim();
+      const values = {
+        icon: editingBookmarkGroup.icon, tab: editingBookmarkGroup.tab, style: editingBookmarkGroup.style,
+        columns: editingBookmarkGroup.columns, header: editingBookmarkGroup.header,
+        initiallyCollapsed: editingBookmarkGroup.initiallyCollapsed, useEqualHeights: editingBookmarkGroup.useEqualHeights
+      };
       if (editingBookmarkGroupId.value) {
         const group = bookmarkGroups.value.find(g => g.id === editingBookmarkGroupId.value);
         if (group) {
           const oldName = group.name;
           group.name = name;
-          syncGroupLayoutIcon(oldName, name, icon);
+          syncGroupAppearance(oldName, name, values);
         }
       } else {
         bookmarkGroups.value.push({
           id: uid(), name, sourceName: name, source: {}, collapsed: false, items: []
         });
-        syncGroupLayoutIcon(null, name, icon);
+        syncGroupAppearance(null, name, values);
       }
       showBookmarkGroupModal.value = false;
     }
@@ -1729,6 +1779,7 @@ const cmsApp = createApp({
       const g = bookmarkGroups.value[gi];
       if (!confirm(t('bookmark.confirmDeleteGroup', { name: g.name, count: g.items.length }))) return;
       bookmarkGroups.value.splice(gi, 1);
+      deleteGroupLayoutEntry(g.name);
     }
 
     function addBookmarkItem(group) {
@@ -2104,6 +2155,73 @@ const cmsApp = createApp({
       return names;
     });
 
+    // Every tab name that a layout entry currently carries, in first-seen
+    // order. Service and bookmark groups share the one layout namespace, so
+    // both the group dialogs and the layout overview draw from this list.
+    const availableTabs = computed(() => {
+      const seen = new Set();
+      const out = [];
+      for (const entry of layoutGroups.value) {
+        const tab = String(entry.tab || '').trim();
+        if (tab && !seen.has(tab)) { seen.add(tab); out.push(tab); }
+      }
+      return out;
+    });
+
+    // The unbound layout entries: a group name with no matching services.yaml /
+    // bookmarks.yaml group. Upstream still honours them (auto-discovered
+    // groups), so the layout tab keeps them editable here, out of the group
+    // dialogs that own the bound groups.
+    const layoutOrphans = computed(() => layoutGroups.value.filter((g) => !knownGroupNames.value.has(g.name)));
+
+    // The tabbed structure of the dashboard, straight from the layout block:
+    // one bucket per tab name in first-seen order, plus the unassigned bucket
+    // for the groups that carry no tab (they render on every tab). Read-only;
+    // clicking a bound group opens its own dialog, an orphan the layout dialog.
+    const layoutTabOverview = computed(() => {
+      const buckets = [];
+      const index = new Map();
+      const unassigned = { name: '', groups: [] };
+      const byName = new Map();
+      for (const g of groups.value) byName.set(g.name, { id: g.id, kind: 'service' });
+      for (const g of bookmarkGroups.value) byName.set(g.name, { id: g.id, kind: 'bookmark' });
+      for (const entry of layoutGroups.value) {
+        const tab = String(entry.tab || '').trim();
+        const group = {
+          name: entry.name,
+          tab,
+          icon: entry.icon || '',
+          bound: knownGroupNames.value.has(entry.name),
+          kind: byName.has(entry.name) ? byName.get(entry.name).kind : 'layout',
+          id: byName.has(entry.name) ? byName.get(entry.name).id : null
+        };
+        if (!tab) { unassigned.groups.push(group); continue; }
+        let bucket = index.get(tab);
+        if (!bucket) { bucket = { name: tab, groups: [] }; index.set(tab, bucket); buckets.push(bucket); }
+        bucket.groups.push(group);
+      }
+      if (unassigned.groups.length) buckets.push(unassigned);
+      return buckets;
+    });
+
+    // From the overview: a bound chip opens the owning group dialog (service or
+    // bookmark) with its layout values loaded; an unbound chip opens the layout
+    // group dialog instead.
+    function openGroupFromOverview(group) {
+      if (!group.bound) {
+        const li = layoutGroups.value.findIndex((g) => g.name === group.name);
+        if (li >= 0) editLayoutGroup(layoutGroups.value[li], li);
+        return;
+      }
+      if (group.kind === 'bookmark') {
+        const g = bookmarkGroups.value.find((x) => x.id === group.id);
+        if (g) editBookmarkGroup(g);
+        return;
+      }
+      const g = groups.value.find((x) => x.id === group.id);
+      if (g) editGroup(g);
+    }
+
     const LAYOUT_GLOBAL_KEYS = [
       'title', 'description', 'language', 'target', 'startUrl', 'favicon',
       'base', 'instanceName', 'logpath',
@@ -2199,6 +2317,17 @@ const cmsApp = createApp({
       if (confirm(t('layout.confirmDeleteGroup', { name: entry.name }))) {
         layoutGroups.value.splice(li, 1);
       }
+    }
+
+    // The unbound rows of the layout tab are addressed by name: the orphan
+    // list is a filter over layoutGroups, so its index does not line up with
+    // the array the save writes.
+    function editOrphanLayoutGroup(entry) {
+      editLayoutGroup(entry, layoutGroups.value.indexOf(entry));
+    }
+
+    function deleteOrphanLayoutGroup(entry) {
+      deleteLayoutGroup(layoutGroups.value.indexOf(entry));
     }
 
     async function saveLayoutSettings() {
@@ -2890,9 +3019,11 @@ const cmsApp = createApp({
       appearance, appearanceMeta, appearancePalette, knownPaletteIds, appearanceDirty, appearanceReady,
       appearanceChoices, appearanceChoiceLabel, loadAppearance, saveAppearance, openAppearanceTab,
       layoutGroups, layoutValues, layoutReady, layoutDirty, layoutMeta, knownGroupNames,
+      availableTabs, layoutOrphans, layoutTabOverview, openGroupFromOverview,
       showLayoutGroupModal, editingLayoutGroup, editingLayoutGroupIndex,
       openLayoutTab, loadLayoutSettings, addLayoutGroup, editLayoutGroup, saveLayoutGroup,
       deleteLayoutGroup, saveLayoutSettings,
+      editOrphanLayoutGroup, deleteOrphanLayoutGroup,
       customCss, customCssDirty, customCssReady, loadCustomCss, saveCustomCss, revalidatePreview,
       customCssPalette, customCssText, customCssRampRows, customCssSeed, customCssParts,
       setCustomCssSeed, restoreCustomCssTheme, resetCustomCssTheme,
@@ -2902,6 +3033,7 @@ const cmsApp = createApp({
       widgetTypes, widgetTypeLabel, widgetValueHint, widgetHintFor, widgetTypesConcat, itemWidgetBadges,
       addWidgetRow, removeWidgetRow, iconPreviewUrl, isMdiIcon, mdiClassOf,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,
+      groupTabOf,
       addItem, editItem, saveItem, deleteItem,
       moveItemToGroup, confirmMove,
       startCardDrag, moveItemUp, moveItemDown,

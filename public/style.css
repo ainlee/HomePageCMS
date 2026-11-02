@@ -1087,6 +1087,164 @@ body {
   flex-shrink: 0;
 }
 
+.modal-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: none;
+  margin: 20px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modal-section-title i { font-size: 15px; color: var(--accent); }
+
+/* The tab field of the group dialogs: a free-typing input with a datalist of
+   the existing tab names, and (once it carries a value) a removable chip that
+   mirrors the value. The chip's X clears the input and retires the tab. */
+.tab-field .icon-input-wrap,
+.tab-field input {
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+.tab-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-chip i { font-size: 14px; }
+
+.tab-chip-x {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+}
+
+.tab-chip-x:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.tab-chip-x i { font-size: 13px; }
+
+/* The small tab tag on the group cards, so the grouping is visible without
+   opening the dialog. */
+.group-tab-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex: none;
+}
+
+.group-tab-tag i { font-size: 14px; }
+
+/* The read-only tab overview of the layout panel: one bucket per tab name
+   (plus the unassigned one) with the groups that fall into it. */
+.layout-overview-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+.tab-overview-bucket {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  align-items: start;
+}
+
+.tab-overview-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-overview-name i { color: var(--accent); font-size: 15px; }
+
+.tab-overview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tab-overview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tab-overview-chip i { font-size: 14px; color: var(--text-dim); }
+
+.tab-overview-chip.is-orphan {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.tab-overview-chip.is-orphan .chip-orphan-mark { color: var(--danger); }
+
+.tab-overview-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tab-overview-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
 .layout-empty {
   color: var(--text-dim);
   font-size: 13px;
@@ -1671,6 +1829,13 @@ body {
     width: 100%;
     justify-content: flex-end;
   }
+  /* The tab overview falls back to a stacked name-over-chips layout on a
+     phone, so the bucket never overflows horizontally. */
+  .tab-overview-bucket {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .tab-overview-name { white-space: normal; }
   /* The global switches drop to one column on a phone, so a row of controls
      never overflows. */
   .layout-grid {
