@@ -138,9 +138,9 @@
                     <span class="item-name">{{ item.name }}</span>
                     <span class="item-desc">{{ item.description }}</span>
                   </div>
-                  <div v-if="itemBadges(item).length" class="item-badges" :title="itemBadgesTooltip(item)">
+                  <div v-if="itemBadges(item, group.name).length" class="item-badges" :title="itemBadgesTooltip(item)">
                     <span class="item-badges-divider" aria-hidden="true"></span>
-                    <span v-for="(b, bi) in itemBadges(item)" :key="'b' + bi"
+                    <span v-for="(b, bi) in itemBadges(item, group.name)" :key="'b' + bi"
                           class="item-widget-badge" :class="'badge-' + b.kind">
                       <i v-if="b.icon" class="mdi" :class="b.icon"></i>
                       <span>{{ b.label }}</span>
@@ -916,6 +916,20 @@
             {{ t('item.widgetsHint') }}
             <br>{{ t('item.widgetsLimitHint') }}
           </div>
+          <!-- Badge order: the first three chips are the ones a card shows. -->
+          <div v-if="editingBadgeOrder.length" class="form-group form-wide">
+            <label class="form-section-label">{{ t('item.badgeOrder') }}</label>
+            <div class="badge-chip-list">
+              <span v-for="(chip, ci) in editingBadgeOrder" :key="chip.id + '-' + ci"
+                    class="badge-chip" :class="{ 'is-shown': ci < 3, 'is-dragging': draggingBadgeIndex === ci }"
+                    @pointerdown="startBadgeDrag($event, ci)">
+                <i class="mdi mdi-drag-vertical badge-chip-drag"></i>
+                <i v-if="chip.icon" class="mdi" :class="chip.icon"></i>
+                <span class="badge-chip-label">{{ chip.label }}</span>
+              </span>
+            </div>
+            <div class="form-note">{{ t('item.badgeOrderHint') }}</div>
+          </div>
           <!-- Multi-widget editor: one block per widget the service carries. -->
           <div class="form-group form-wide">
             <label class="form-section-label">
@@ -925,8 +939,11 @@
               </button>
             </label>
             <div v-if="!editingItem.widgets.length" class="form-note">{{ t('item.noWidgets') }}</div>
-            <div v-for="(w, wi) in editingItem.widgets" :key="wi" class="widget-row">
+            <div v-for="(w, wi) in editingItem.widgets" :key="wi" class="widget-row"
+                 :class="{ 'is-dragging': draggingWidgetIndex === wi }">
               <div class="widget-row-head">
+                <i class="mdi mdi-drag-vertical widget-drag" :title="t('item.widgetDragHint')"
+                   @pointerdown="startWidgetDrag($event, wi)"></i>
                 <span class="widget-row-title">
                   <i class="mdi mdi-puzzle-outline"></i>
                   <span>{{ t('item.widgetIndex', { index: wi + 1 }) }}</span>
@@ -975,6 +992,14 @@
                 </div>
               </div>
               <div class="widget-row-foot">
+                <button class="btn btn-icon" type="button" :disabled="wi === 0"
+                        @click="moveWidgetRow(wi, -1)" :title="t('item.widgetMoveUp')">
+                  <i class="mdi mdi-arrow-up"></i>
+                </button>
+                <button class="btn btn-icon" type="button" :disabled="wi === editingItem.widgets.length - 1"
+                        @click="moveWidgetRow(wi, 1)" :title="t('item.widgetMoveDown')">
+                  <i class="mdi mdi-arrow-down"></i>
+                </button>
                 <button @click="removeWidgetRow(wi)" class="btn btn-small btn-danger" type="button">
                   <i class="mdi mdi-delete"></i> {{ t('item.removeWidgetCard') }}
                 </button>
