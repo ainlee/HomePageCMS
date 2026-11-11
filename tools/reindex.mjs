@@ -6,7 +6,7 @@
 // language of the code being indexed.
 //
 //   node tools/reindex.mjs                                  # defaults
-//   node tools/reindex.mjs --model qwen3-embedding:0.6b
+//   node tools/reindex.mjs --model qwen3-embedding:0.6b-4k
 //   node tools/reindex.mjs --url http://192.168.1.10:11434/v1
 //
 // The endpoint's dimension count is probed from the API, so GITNEXUS_EMBEDDING_DIMS
@@ -27,7 +27,7 @@ const arg = (name, fallback) => {
 };
 
 const URL = arg('url', process.env.GITNEXUS_EMBEDDING_URL || 'http://localhost:11434/v1');
-const MODEL = arg('model', process.env.GITNEXUS_EMBEDDING_MODEL || 'qwen3-embedding:0.6b');
+const MODEL = arg('model', process.env.GITNEXUS_EMBEDDING_MODEL || 'qwen3-embedding:0.6b-4k');
 const PROBE = arg('probe', '折疊預覽面板');
 const FORCE = args.includes('--force');
 const ALWAYS_DROP = args.includes('--drop-embeddings');

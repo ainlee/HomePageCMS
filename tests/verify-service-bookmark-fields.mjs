@@ -8,7 +8,7 @@ function check(name, cond, detail) { if (cond) { passed++; console.log('PASS  ' 
 function setOrDelete(obj, key, value) { if (value) obj[key] = value; else delete obj[key]; }
 
 // service with all new fields
-const svc = { href: 'https://x/', description: 'd', server: 'srv1', namespace: 'ns1', app: 'myapp', podSelector: 'app=myapp', icon: 'mdi-test' };
+const svc = { href: 'https://x/', description: 'd', container: 'my-container', ping: '192.168.1.1', server: 'srv1', namespace: 'ns1', app: 'myapp', podSelector: 'app=myapp', icon: 'mdi-test' };
 const weightRaw = '100'; const weightNum = Number(weightRaw);
 svc.weight = Number.isFinite(weightNum) ? weightNum : weightRaw;
 svc.widget = { type: 'docker', server: 'srv1', container: 'c1' };
@@ -17,6 +17,8 @@ const doc = [{ G: [{ S: svc }] }];
 const dumped = yaml.dump(doc);
 const back = yaml.load(dumped);
 const b = back[0].G[0].S;
+check('container round-trips', b.container === 'my-container', dumped);
+check('ping round-trips', b.ping === '192.168.1.1', dumped);
 check('server round-trips', b.server === 'srv1', dumped);
 check('weight stays numeric', b.weight === 100, JSON.stringify(b.weight));
 check('namespace/app/podSelector round-trip', b.namespace === 'ns1' && b.app === 'myapp' && b.podSelector === 'app=myapp');

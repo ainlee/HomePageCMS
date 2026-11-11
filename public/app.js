@@ -1095,10 +1095,16 @@ const cmsApp = createApp({
     // The widget types a card shows as badges, the first three plus a count
     // of the rest.
     function itemWidgetBadges(item) {
-      const types = (item.widgets || []).map((w) => w && w.type).filter(Boolean);
-      if (!types.length) return null;
-      const shown = types.slice(0, 3);
-      const extra = types.length - shown.length;
+      const badges = [];
+      if (item.container) badges.push('docker');
+      if (item.ping) badges.push('ping');
+      if (item.siteMonitor) badges.push('monitor');
+      (item.widgets || []).forEach((w) => {
+        if (w && w.type) badges.push(w.type);
+      });
+      if (!badges.length) return null;
+      const shown = badges.slice(0, 3);
+      const extra = badges.length - shown.length;
       return extra > 0 ? [...shown, '+' + extra] : shown;
     }
 
@@ -1334,6 +1340,8 @@ const cmsApp = createApp({
         description: config.description || '',
         target: config.target || '',
         icon, iconType,
+        container: config.container != null ? String(config.container) : '',
+        ping: config.ping != null ? String(config.ping) : '',
         server: config.server || '',
         weight: (config.weight ?? '') === '' ? '' : String(config.weight),
         namespace: config.namespace || '',
@@ -1372,18 +1380,14 @@ const cmsApp = createApp({
     }
 
     // Every widget a service carries, whichever shape the file uses: the single
-    // `widget` object, the legacy service-level `customapi`/`container`/`ping`
-    // fields, and the plural `widgets` list.
+    // `widget` object, the legacy service-level `customapi` field,
+    // and the plural `widgets` list.
     function normalizeWidgets(config) {
       const out = [];
       if (config.widget && typeof config.widget === 'object') {
         out.push(normalizeWidget(config.widget, 'widget'));
       } else if (config.customapi != null) {
         out.push({ ...blankWidget(), type: 'customapi', url: String(config.customapi), source: { customapi: config.customapi }, dialect: 'legacy-customapi' });
-      } else if (config.container != null) {
-        out.push({ ...blankWidget(), type: 'docker', container: String(config.container), source: { container: config.container }, dialect: 'legacy-container' });
-      } else if (config.ping != null) {
-        out.push({ ...blankWidget(), type: 'ping', host: String(config.ping), source: { ping: config.ping }, dialect: 'legacy-ping' });
       }
       if (Array.isArray(config.widgets)) {
         for (const w of config.widgets) out.push(normalizeWidget(w, 'widgets'));
@@ -1417,7 +1421,7 @@ const cmsApp = createApp({
         const v = w[k];
         return String(v || '').trim() !== '';
       });
-      const primary = w.dialect === 'legacy-customapi' ? 'url' : w.dialect === 'legacy-container' ? 'container' : 'host';
+      const primary = 'url';
       return filled.length === 1 && filled[0] === primary;
     }
 
@@ -1425,21 +1429,13 @@ const cmsApp = createApp({
     // change does not leave the old one behind.
     function writeWidgets(conf, item) {
       delete conf.widget; delete conf.widgets;
-      delete conf.customapi; delete conf.container; delete conf.ping;
+      delete conf.customapi;
       const widgets = (item.widgets || []).filter((w) => w && w.type);
       if (!widgets.length) return;
       if (widgets.length === 1) {
         const w = widgets[0];
-        // A single ping widget with nothing but its host is the service-level
-        // ping field: upstream renders it from conf.ping, not from a widget
-        // object, so the plain shape is the one that actually works there.
-        const pingOnly = w.type === 'ping' && w.host.trim() !== '' &&
-          WIDGET_FIELDS.every((k) => { const v = w[k]; return k === 'host' || String(v || '').trim() === ''; });
-        if (pingOnly) { conf.ping = w.host.trim(); return; }
         if (w.dialect.startsWith('legacy') && legacyIsPlain(w)) {
           if (w.dialect === 'legacy-customapi') conf.customapi = w.url.trim();
-          else if (w.dialect === 'legacy-container') conf.container = w.container.trim();
-          else conf.ping = w.host.trim();
           return;
         }
         conf.widget = buildWidgetObject(w);
@@ -1602,6 +1598,8 @@ const cmsApp = createApp({
           setOrDelete(conf, 'target', item.target);
           setOrDelete(conf, 'description', item.description);
           setOrDelete(conf, 'icon', item.icon);
+          setOrDelete(conf, 'container', (item.container || '').trim());
+          setOrDelete(conf, 'ping', (item.ping || '').trim());
           setOrDelete(conf, 'siteMonitor', (item.siteMonitor || '').trim());
           setOrDelete(conf, 'statusStyle', (item.statusStyle || '').trim());
           setOrDelete(conf, 'server', (item.server || '').trim());
@@ -2417,6 +2415,7 @@ const cmsApp = createApp({
       editingItemId.value = null;
       Object.assign(editingItem, {
         name: '', href: '', description: '', target: '', icon: '', iconType: 'mdi',
+        container: '', ping: '',
         siteMonitor: '', statusStyle: '', showStats: '',
         server: '', weight: '', namespace: '', app: '', podSelector: '',
         widgets: []
@@ -2430,6 +2429,7 @@ const cmsApp = createApp({
       Object.assign(editingItem, {
         name: item.name, href: item.href, description: item.description,
         target: item.target, icon: item.icon, iconType: item.iconType,
+        container: item.container || '', ping: item.ping || '',
         siteMonitor: item.siteMonitor || '', statusStyle: item.statusStyle || '',
         showStats: item.showStats || '',
         server: item.server || '', weight: item.weight || '',
@@ -2451,6 +2451,8 @@ const cmsApp = createApp({
             name: editingItem.name.trim(), href: editingItem.href.trim(),
             description: editingItem.description.trim(), target: editingItem.target,
             icon: editingItem.icon.trim(), iconType: editingItem.iconType,
+            container: editingItem.container.trim(),
+            ping: editingItem.ping.trim(),
             siteMonitor: editingItem.siteMonitor.trim(),
             statusStyle: editingItem.statusStyle,
             showStats: editingItem.showStats,
@@ -2465,6 +2467,8 @@ const cmsApp = createApp({
           id: uid(), name: editingItem.name.trim(), href: editingItem.href.trim(),
           description: editingItem.description.trim(), target: editingItem.target,
           icon: editingItem.icon.trim(), iconType: editingItem.iconType,
+          container: editingItem.container.trim(),
+          ping: editingItem.ping.trim(),
           siteMonitor: editingItem.siteMonitor.trim(),
           statusStyle: editingItem.statusStyle,
           showStats: editingItem.showStats,

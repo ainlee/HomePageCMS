@@ -156,7 +156,7 @@ npm run reindex                       # 加上語意搜尋（需要本機的嵌�
 而適合的模型取決於被索引程式碼的語言：
 
 ```bash
-npm run reindex -- --model qwen3-embedding:0.6b
+npm run reindex -- --model qwen3-embedding:0.6b-4k
 npm run reindex -- --model bge-m3
 npm run reindex -- --url http://192.168.1.10:11434/v1
 ```
@@ -171,7 +171,7 @@ npm run reindex -- --url http://192.168.1.10:11434/v1
 
 ```
 GITNEXUS_EMBEDDING_URL=http://localhost:11434/v1
-GITNEXUS_EMBEDDING_MODEL=qwen3-embedding:0.6b
+GITNEXUS_EMBEDDING_MODEL=qwen3-embedding:0.6b-4k
 GITNEXUS_EMBEDDING_DIMS=1024
 ```
 

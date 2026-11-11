@@ -922,6 +922,14 @@
             </div>
           </div>
           <div class="form-group">
+            <label>{{ t('item.container') }}</label>
+            <input v-model="editingItem.container" type="text" :placeholder="t('item.containerPlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.ping') }}</label>
+            <input v-model="editingItem.ping" type="text" :placeholder="t('item.pingPlaceholder')">
+          </div>
+          <div class="form-group">
             <label>{{ t('item.siteMonitor') }}</label>
             <input v-model="editingItem.siteMonitor" type="text" :placeholder="t('item.siteMonitorPlaceholder')">
           </div>
