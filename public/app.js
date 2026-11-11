@@ -1094,18 +1094,31 @@ const cmsApp = createApp({
 
     // The widget types a card shows as badges, the first three plus a count
     // of the rest.
-    function itemWidgetBadges(item) {
-      const badges = [];
-      if (item.container) badges.push('docker');
-      if (item.ping) badges.push('ping');
-      if (item.siteMonitor) badges.push('monitor');
+    function itemBadges(item) {
+      const list = [];
+      if (item.container) list.push({ kind: 'docker', label: item.container, icon: 'mdi-docker' });
+      if (item.ping) list.push({ kind: 'ping', label: item.ping, icon: 'mdi-access-point-network' });
+      if (item.siteMonitor) list.push({ kind: 'monitor', label: 'monitor', icon: 'mdi-web' });
       (item.widgets || []).forEach((w) => {
-        if (w && w.type) badges.push(w.type);
+        if (w && w.type) list.push({ kind: 'widget', label: w.type, icon: 'mdi-widgets-outline' });
       });
-      if (!badges.length) return null;
-      const shown = badges.slice(0, 3);
-      const extra = badges.length - shown.length;
-      return extra > 0 ? [...shown, '+' + extra] : shown;
+      if (!list.length) return [];
+      const shown = list.slice(0, 3);
+      const extra = list.length - shown.length;
+      if (extra > 0) {
+        shown.push({ kind: 'overflow', label: '+' + extra, icon: '' });
+      }
+      return shown;
+    }
+
+    function itemBadgesTooltip(item) {
+      const total = (item.container ? 1 : 0) + (item.ping ? 1 : 0) + (item.siteMonitor ? 1 : 0) +
+        (item.widgets || []).filter((w) => w && w.type).length;
+      return t('item.badgesTooltip', { count: total, max: 3 });
+    }
+
+    function itemWidgetBadges(item) {
+      return itemBadges(item).map((b) => b.label);
     }
 
     // The icon of a widget card: the mdi glyph of the type, falling back to a
@@ -1434,6 +1447,9 @@ const cmsApp = createApp({
       if (!widgets.length) return;
       if (widgets.length === 1) {
         const w = widgets[0];
+        const pingOnly = w.type === 'ping' && w.host.trim() !== '' &&
+          WIDGET_FIELDS.every((k) => { const v = w[k]; return k === 'host' || String(v || '').trim() === ''; });
+        if (pingOnly) { conf.ping = w.host.trim(); return; }
         if (w.dialect.startsWith('legacy') && legacyIsPlain(w)) {
           if (w.dialect === 'legacy-customapi') conf.customapi = w.url.trim();
           return;
@@ -1593,7 +1609,6 @@ const cmsApp = createApp({
             return entry;
           }
           const conf = { ...(item.source || {}) };
-          writeWidgets(conf, item);
           setOrDelete(conf, 'href', item.href);
           setOrDelete(conf, 'target', item.target);
           setOrDelete(conf, 'description', item.description);
@@ -1606,6 +1621,7 @@ const cmsApp = createApp({
           setOrDelete(conf, 'namespace', (item.namespace || '').trim());
           setOrDelete(conf, 'app', (item.app || '').trim());
           setOrDelete(conf, 'podSelector', (item.podSelector || '').trim());
+          writeWidgets(conf, item);
           if (item.showStats === 'true') conf.showStats = true;
           else if (item.showStats === 'false') conf.showStats = false;
           else delete conf.showStats;
@@ -3034,7 +3050,7 @@ const cmsApp = createApp({
       resetAllCustomCss, confirmResetAllCustomCss, probeFontUrl,
       movingItem, movingFromGroup, dragOverGroup, dropIndex, draggingItem, backups, toast,
       totalItems, activeGroups, activeTotalItems,
-      widgetTypes, widgetTypeLabel, widgetValueHint, widgetHintFor, widgetTypesConcat, itemWidgetBadges,
+      widgetTypes, widgetTypeLabel, widgetValueHint, widgetHintFor, widgetTypesConcat, itemWidgetBadges, itemBadges, itemBadgesTooltip,
       addWidgetRow, removeWidgetRow, iconPreviewUrl, isMdiIcon, mdiClassOf,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,
       groupTabOf,

@@ -337,17 +337,68 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Item badges container and divider in cards */
+.item-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 380px;
+}
+
+.item-badges-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
 .item-widget-badge {
-  font-size: 10px;
-  padding: 2px 6px;
+  font-size: 11px;
+  padding: 2px 7px;
   border-radius: 4px;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+  font-weight: 500;
+  border: 1px solid transparent;
+  line-height: 1.2;
+}
+
+.item-widget-badge i {
+  font-size: 13px;
 }
 .badge-container { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+.badge-docker {
+  background: color-mix(in srgb, #0db7ed 15%, transparent);
+  color: #0db7ed;
+  border-color: color-mix(in srgb, #0db7ed 35%, transparent);
+}
 .badge-ping { background: color-mix(in srgb, var(--info) 15%, transparent); color: var(--info); }
+.badge-monitor {
+  background: color-mix(in srgb, #10b981 15%, transparent);
+  color: #10b981;
+  border-color: color-mix(in srgb, #10b981 35%, transparent);
+}
 .badge-customapi { background: color-mix(in srgb, var(--api) 15%, transparent); color: var(--api); }
 .badge-none { background: transparent; color: var(--text-dim); }
 .badge-generic { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+.badge-widget {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.badge-overflow {
+  background: var(--bg);
+  color: var(--text-dim);
+  border-color: var(--border);
+  font-weight: 600;
+}
 
 .form-section-label {
   display: flex;
@@ -357,23 +408,81 @@ body {
   width: 100%;
 }
 
+/* Form section headers and hints inside item modal */
+.form-section-title {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 14px;
+  margin-bottom: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.form-section-title i {
+  color: var(--accent);
+  font-size: 16px;
+}
+
+.form-section-desc {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
 /* One block per widget the service carries. */
 .widget-row {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px;
-  margin-bottom: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
   background: var(--bg);
+  transition: border-color 0.15s ease;
+}
+
+.widget-row:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 }
 
 .widget-row-head {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--border) 60%, transparent);
 }
 
-.widget-row-head .widget-type { flex: 1; }
+.widget-row-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.widget-row-head .widget-type {
+  flex: 1;
+  min-width: 140px;
+}
+
+.widget-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 4px 10px;
+}
 
 .widget-row-fields {
   display: grid;

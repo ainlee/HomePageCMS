@@ -138,10 +138,14 @@
                     <span class="item-name">{{ item.name }}</span>
                     <span class="item-desc">{{ item.description }}</span>
                   </div>
-                  <span v-for="(wt, wti) in itemWidgetBadges(item)" :key="'w' + wti"
-                        class="item-widget-badge" :class="'badge-generic'">
-                    {{ wt }}
-                  </span>
+                  <div v-if="itemBadges(item).length" class="item-badges" :title="itemBadgesTooltip(item)">
+                    <span class="item-badges-divider" aria-hidden="true"></span>
+                    <span v-for="(b, bi) in itemBadges(item)" :key="'b' + bi"
+                          class="item-widget-badge" :class="'badge-' + b.kind">
+                      <i v-if="b.icon" class="mdi" :class="b.icon"></i>
+                      <span>{{ b.label }}</span>
+                    </span>
+                  </div>
                   <div class="item-actions">
                     <button @click="editItem(group, item)" class="btn btn-icon" :title="t('item.edit')">
                       <i class="mdi mdi-pencil"></i>
@@ -865,6 +869,52 @@
           <icon-field v-model="editingItem.icon" :label="t('item.iconValue')"
                       :placeholder="editingItem.iconType === 'mdi' ? t('item.iconValueMdi') : t('item.iconValueUrl')"
                       :icon-type="editingItem.iconType"></icon-field>
+          <!-- Status tracking section -->
+          <div class="form-section-title">
+            <i class="mdi mdi-heart-pulse"></i> {{ t('item.sectionStatus') }}
+          </div>
+          <div class="form-section-desc">
+            {{ t('item.statusHint') }}
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.container') }}</label>
+            <input v-model="editingItem.container" type="text" :placeholder="t('item.containerPlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.ping') }}</label>
+            <input v-model="editingItem.ping" type="text" :placeholder="t('item.pingPlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.siteMonitor') }}</label>
+            <input v-model="editingItem.siteMonitor" type="text" :placeholder="t('item.siteMonitorPlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.statusStyle') }}</label>
+            <select v-model="editingItem.statusStyle">
+              <option value="">{{ t('item.statusStyleUnset') }}</option>
+              <option value="dot">dot</option>
+              <option value="basic">basic</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.showStats') }}</label>
+            <select v-model="editingItem.showStats">
+              <option value="">{{ t('item.statusStyleUnset') }}</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.server') }}</label>
+            <input v-model="editingItem.server" type="text" :placeholder="t('item.serverPlaceholder')">
+          </div>
+          <!-- Multi-widget editor section -->
+          <div class="form-section-title">
+            <i class="mdi mdi-widgets-outline"></i> {{ t('item.sectionWidgets') }}
+          </div>
+          <div class="form-section-desc">
+            {{ t('item.widgetsHint') }}
+          </div>
           <!-- Multi-widget editor: one block per widget the service carries. -->
           <div class="form-group form-wide">
             <label class="form-section-label">
@@ -876,6 +926,10 @@
             <div v-if="!editingItem.widgets.length" class="form-note">{{ t('item.noWidgets') }}</div>
             <div v-for="(w, wi) in editingItem.widgets" :key="wi" class="widget-row">
               <div class="widget-row-head">
+                <span class="widget-row-title">
+                  <i class="mdi mdi-puzzle-outline"></i>
+                  <span>{{ t('item.widgetIndex', { index: wi + 1 }) }}</span>
+                </span>
                   <select-hint
                     v-model="w.type"
                     class="widget-type"
@@ -885,8 +939,9 @@
                     :label-for="widgetTypeLabel"
                     :hint-for="widgetHintFor"
                   />
-                <button @click="removeWidgetRow(wi)" class="btn btn-icon btn-danger" type="button" :title="t('item.removeWidget')">
-                  <i class="mdi mdi-delete"></i>
+                <button @click="removeWidgetRow(wi)" class="btn btn-small btn-danger widget-remove-btn" type="button" :title="t('item.removeWidget')">
+                  <i class="mdi mdi-trash-can-outline"></i>
+                  <span>{{ t('item.removeWidget') }}</span>
                 </button>
               </div>
               <div class="widget-row-fields">
@@ -921,37 +976,9 @@
               </div>
             </div>
           </div>
-          <div class="form-group">
-            <label>{{ t('item.container') }}</label>
-            <input v-model="editingItem.container" type="text" :placeholder="t('item.containerPlaceholder')">
-          </div>
-          <div class="form-group">
-            <label>{{ t('item.ping') }}</label>
-            <input v-model="editingItem.ping" type="text" :placeholder="t('item.pingPlaceholder')">
-          </div>
-          <div class="form-group">
-            <label>{{ t('item.siteMonitor') }}</label>
-            <input v-model="editingItem.siteMonitor" type="text" :placeholder="t('item.siteMonitorPlaceholder')">
-          </div>
-          <div class="form-group">
-            <label>{{ t('item.statusStyle') }}</label>
-            <select v-model="editingItem.statusStyle">
-              <option value="">{{ t('item.statusStyleUnset') }}</option>
-              <option value="dot">dot</option>
-              <option value="basic">basic</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>{{ t('item.showStats') }}</label>
-            <select v-model="editingItem.showStats">
-              <option value="">{{ t('item.statusStyleUnset') }}</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>{{ t('item.server') }}</label>
-            <input v-model="editingItem.server" type="text" :placeholder="t('item.serverPlaceholder')">
+          <!-- Advanced & Kubernetes section -->
+          <div class="form-section-title">
+            <i class="mdi mdi-tune"></i> {{ t('item.sectionK8s') }}
           </div>
           <div class="form-group">
             <label>{{ t('item.weight') }}</label>
