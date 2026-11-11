@@ -475,13 +475,11 @@ body {
   min-width: 140px;
 }
 
-.widget-remove-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  font-size: 12px;
-  padding: 4px 10px;
+/* The delete button of a widget card, on its own line so it cannot be missed. */
+.widget-row-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
 }
 
 .widget-row-fields {
