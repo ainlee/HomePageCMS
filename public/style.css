@@ -385,6 +385,16 @@ body {
   color: #10b981;
   border-color: color-mix(in srgb, #10b981 35%, transparent);
 }
+.badge-kubernetes {
+  background: color-mix(in srgb, #326ce5 15%, transparent);
+  color: #326ce5;
+  border-color: color-mix(in srgb, #326ce5 35%, transparent);
+}
+.badge-proxmox {
+  background: color-mix(in srgb, #e57000 15%, transparent);
+  color: #e57000;
+  border-color: color-mix(in srgb, #e57000 35%, transparent);
+}
 .badge-customapi { background: color-mix(in srgb, var(--api) 15%, transparent); color: var(--api); }
 .badge-none { background: transparent; color: var(--text-dim); }
 .badge-generic { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
@@ -531,6 +541,12 @@ body {
 
 /* The multi-widget editor spans the whole dialog, not just one grid column. */
 .form-wide { grid-column: 1 / -1; }
+.form-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
 .form-wide .form-note { margin-top: 4px; }
 
 /* The live preview of a prefixed / named icon in the dialog. */

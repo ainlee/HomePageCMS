@@ -1109,6 +1109,18 @@ const cmsApp = createApp({
       if (item.container) list.push({ id: 'container', kind: 'docker', label: String(item.container), icon: 'mdi-docker' });
       if (item.ping) list.push({ id: 'ping', kind: 'ping', label: String(item.ping), icon: 'mdi-access-point-network' });
       if (item.siteMonitor) list.push({ id: 'siteMonitor', kind: 'monitor', label: 'monitor', icon: 'mdi-web' });
+      // Kubernetes hides its own indicator when the workload lives in another cluster.
+      if (item.app && item.external !== 'true') {
+        list.push({ id: 'app', kind: 'kubernetes', label: String(item.app), icon: 'mdi-kubernetes' });
+      }
+      if (item.proxmoxNode && item.proxmoxVMID) {
+        list.push({
+          id: 'proxmox',
+          kind: 'proxmox',
+          label: String(item.proxmoxNode) + '/' + String(item.proxmoxVMID),
+          icon: 'mdi-server-network'
+        });
+      }
       (item.widgets || []).forEach((w) => {
         if (w && w.type) list.push({ id: 'widget:' + w.type, kind: 'widget', label: w.type, icon: 'mdi-widgets-outline' });
       });
@@ -1146,8 +1158,7 @@ const cmsApp = createApp({
     }
 
     function itemBadgesTooltip(item) {
-      const total = (item.container ? 1 : 0) + (item.ping ? 1 : 0) + (item.siteMonitor ? 1 : 0) +
-        (item.widgets || []).filter((w) => w && w.type).length;
+      const total = badgeCandidates(item).length;
       return t('item.badgesTooltip', { count: total, max: 3 });
     }
 
@@ -1250,6 +1261,10 @@ const cmsApp = createApp({
         container: (editingItem.container || '').trim(),
         ping: (editingItem.ping || '').trim(),
         siteMonitor: (editingItem.siteMonitor || '').trim(),
+        app: (editingItem.app || '').trim(),
+        external: editingItem.external,
+        proxmoxNode: (editingItem.proxmoxNode || '').trim(),
+        proxmoxVMID: (editingItem.proxmoxVMID || '').trim(),
         widgets: editingItem.widgets
       });
       const prev = editingBadgeOrder.value.map((c) => c.id);
@@ -1319,6 +1334,10 @@ const cmsApp = createApp({
         container: (editingItem.container || '').trim(),
         ping: (editingItem.ping || '').trim(),
         siteMonitor: (editingItem.siteMonitor || '').trim(),
+        app: (editingItem.app || '').trim(),
+        external: editingItem.external,
+        proxmoxNode: (editingItem.proxmoxNode || '').trim(),
+        proxmoxVMID: (editingItem.proxmoxVMID || '').trim(),
         widgets: editingItem.widgets
       }).map((c) => c.id);
       const ids = editingBadgeOrder.value.map((c) => c.id);
@@ -1550,6 +1569,7 @@ const cmsApp = createApp({
           icon: '', iconType: 'mdi',
           server: '', weight: '', namespace: '', app: '', podSelector: '',
           siteMonitor: '', statusStyle: '', showStats: '',
+        external: '', proxmoxNode: '', proxmoxVMID: '', proxmoxType: '',
           widgets: [], nested: true, source: conf };
       }
       const config = conf && typeof conf === 'object' ? conf : {};
@@ -1571,6 +1591,10 @@ const cmsApp = createApp({
         namespace: config.namespace || '',
         app: config.app || '',
         podSelector: config.podSelector || '',
+        external: config.external === true ? 'true' : config.external === false ? 'false' : '',
+        proxmoxNode: config.proxmoxNode != null ? String(config.proxmoxNode) : '',
+        proxmoxVMID: config.proxmoxVMID != null ? String(config.proxmoxVMID) : '',
+        proxmoxType: config.proxmoxType != null ? String(config.proxmoxType) : '',
         siteMonitor: config.siteMonitor || '',
         statusStyle: config.statusStyle || '',
         showStats: config.showStats === true ? 'true' : config.showStats === false ? 'false' : '',
@@ -1832,7 +1856,16 @@ const cmsApp = createApp({
           setOrDelete(conf, 'namespace', (item.namespace || '').trim());
           setOrDelete(conf, 'app', (item.app || '').trim());
           setOrDelete(conf, 'podSelector', (item.podSelector || '').trim());
+          setOrDelete(conf, 'proxmoxNode', (item.proxmoxNode || '').trim());
+          // The vmid is a number upstream; keep digits as a number, anything else as typed.
+          const vmidRaw = (item.proxmoxVMID || '').trim();
+          if (!vmidRaw) delete conf.proxmoxVMID;
+          else conf.proxmoxVMID = /^\d+$/.test(vmidRaw) ? Number(vmidRaw) : vmidRaw;
+          setOrDelete(conf, 'proxmoxType', (item.proxmoxType || '').trim());
           writeWidgets(conf, item);
+          if (item.external === 'true') conf.external = true;
+          else if (item.external === 'false') conf.external = false;
+          else delete conf.external;
           if (item.showStats === 'true') conf.showStats = true;
           else if (item.showStats === 'false') conf.showStats = false;
           else delete conf.showStats;
@@ -2647,6 +2680,7 @@ const cmsApp = createApp({
         container: '', ping: '',
         siteMonitor: '', statusStyle: '', showStats: '',
         server: '', weight: '', namespace: '', app: '', podSelector: '',
+        external: '', proxmoxNode: '', proxmoxVMID: '', proxmoxType: '',
         widgets: []
       });
       editingItem._targetGroupId = group.id;
@@ -2665,6 +2699,9 @@ const cmsApp = createApp({
         showStats: item.showStats || '',
         server: item.server || '', weight: item.weight || '',
         namespace: item.namespace || '', app: item.app || '', podSelector: item.podSelector || '',
+        external: item.external || '',
+        proxmoxNode: item.proxmoxNode || '', proxmoxVMID: item.proxmoxVMID || '',
+        proxmoxType: item.proxmoxType || '',
         widgets: Array.isArray(item.widgets) ? item.widgets.map((w) => ({ ...w, headers: (w.headers || []).map((h) => ({ ...h })) })) : []
       });
       editingItem._targetGroupId = group.id;
@@ -2692,6 +2729,10 @@ const cmsApp = createApp({
             server: editingItem.server.trim(), weight: editingItem.weight.trim(),
             namespace: editingItem.namespace.trim(), app: editingItem.app.trim(),
             podSelector: editingItem.podSelector.trim(),
+            external: editingItem.external,
+            proxmoxNode: editingItem.proxmoxNode.trim(),
+            proxmoxVMID: editingItem.proxmoxVMID.trim(),
+            proxmoxType: editingItem.proxmoxType.trim(),
             widgets: editingItem.widgets.map((w) => ({ ...w, headers: (w.headers || []).map((h) => ({ ...h })) }))
           });
         }
@@ -2708,6 +2749,10 @@ const cmsApp = createApp({
           server: editingItem.server.trim(), weight: editingItem.weight.trim(),
           namespace: editingItem.namespace.trim(), app: editingItem.app.trim(),
           podSelector: editingItem.podSelector.trim(),
+          external: editingItem.external,
+          proxmoxNode: editingItem.proxmoxNode.trim(),
+          proxmoxVMID: editingItem.proxmoxVMID.trim(),
+          proxmoxType: editingItem.proxmoxType.trim(),
           widgets: editingItem.widgets.map((w) => ({ ...w, headers: (w.headers || []).map((h) => ({ ...h })) })),
           nested: false, source: null
         });

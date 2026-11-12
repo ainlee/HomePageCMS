@@ -43,12 +43,20 @@ const SEED = [
   '        container: c1',
   '        ping: 10.0.0.9',
   '        siteMonitor: http://sorter/',
+  '        namespace: media',
+  '        app: plex',
+  '        proxmoxNode: pve',
+  '        proxmoxVMID: 100',
   '        widget:',
   '          type: plex',
   '          url: http://plex.host',
   '        widgets:',
   '          - type: sonarr',
   '            url: http://sonarr.host',
+  '    - Ext:',
+  '        href: http://ext/',
+  '        app: far-away',
+  '        external: true',
 ].join('\n');
 
 await api('/api/services', {
@@ -62,6 +70,15 @@ await cdp.send('Page.navigate', { url: APP_URL }, sessionId);
 await waitFor('!!(document.querySelector("#app") && document.querySelector("#app").__vue_app__)');
 await sleep(600);
 
+// An external Kubernetes workload gets no status indicator upstream, so it must
+// not produce a badge chip either.
+await ev('(() => { document.querySelectorAll(".item-card")[1].querySelector(".item-actions .btn").click(); return true; })()');
+await sleep(500);
+const extChips = await ev('document.querySelectorAll(".modal .badge-chip").length');
+check('an external kubernetes workload gets no badge', extChips === 0, String(extChips));
+await ev('(() => { const b = document.querySelector(".modal .btn-secondary"); if (b) b.click(); return true; })()');
+await sleep(400);
+
 await ev('(() => { const c = document.querySelector(".item-card"); c.querySelector(".item-actions .btn").click(); return true; })()');
 await sleep(500);
 
@@ -69,9 +86,11 @@ const chips = () => ev('JSON.stringify([...document.querySelectorAll(".modal .ba
 const widgetTypes = () => ev('JSON.stringify([...document.querySelectorAll(".modal .widget-row .widget-type")].map((s) => s.getAttribute("data-value")))');
 
 const initial = JSON.parse(await chips());
-check('one chip per tracked item', initial.length === 5, JSON.stringify(initial.map((c) => c.label)));
+check('one chip per tracked item', initial.length === 7, JSON.stringify(initial.map((c) => c.label)));
 check('the first three chips are marked as shown', initial.slice(0, 3).every((c) => c.shown) && !initial[3].shown, JSON.stringify(initial));
 check('chips start with the monitors', initial[0].label === 'c1' && initial[1].label === '10.0.0.9' && initial[2].label === 'monitor', JSON.stringify(initial.slice(0, 3)));
+check('the kubernetes and proxmox indicators are chips too',
+  initial[3].label === 'plex' && initial[4].label === 'pve/100', JSON.stringify(initial.slice(3, 5)));
 
 // Up/down buttons of the widget cards.
 const startedTypes = JSON.parse(await widgetTypes());
@@ -119,6 +138,12 @@ const parsed = yaml.load(file.raw || '', 'utf8');
 const sorter = parsed[0].Media[0].Sorter;
 const savedTypes = [sorter.widget.type, ...(sorter.widgets || []).map((w) => w.type)];
 check('the saved widget order matches the dialog', JSON.stringify(savedTypes) === JSON.stringify(afterDrag), JSON.stringify(savedTypes));
+check('the kubernetes target round-trips', sorter.app === 'plex' && sorter.namespace === 'media', JSON.stringify({ app: sorter.app, namespace: sorter.namespace }));
+check('the proxmox target round-trips, vmid as a number',
+  sorter.proxmoxNode === 'pve' && sorter.proxmoxVMID === 100 && !('proxmoxType' in sorter),
+  JSON.stringify({ node: sorter.proxmoxNode, vmid: sorter.proxmoxVMID, type: sorter.proxmoxType }));
+const ext = parsed[0].Media[1].Ext;
+check('the external flag round-trips as a boolean', ext.app === 'far-away' && ext.external === true, JSON.stringify(ext));
 
 const settingsAfter = await api('/api/settings');
 const storedOrder = (settingsAfter.data.badgeOrder || {})['Media/Sorter'] || [];

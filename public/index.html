@@ -1006,13 +1006,12 @@
               </div>
             </div>
           </div>
-          <!-- Advanced & Kubernetes section -->
+          <!-- Kubernetes section -->
           <div class="form-section-title">
-            <i class="mdi mdi-tune"></i> {{ t('item.sectionK8s') }}
+            <i class="mdi mdi-kubernetes"></i> {{ t('item.sectionK8s') }}
           </div>
-          <div class="form-group">
-            <label>{{ t('item.weight') }}</label>
-            <input v-model="editingItem.weight" type="text" inputmode="numeric" :placeholder="t('item.weightPlaceholder')">
+          <div class="form-section-desc">
+            {{ t('item.k8sHint') }}
           </div>
           <div class="form-group">
             <label>{{ t('item.namespace') }}</label>
@@ -1025,6 +1024,45 @@
           <div class="form-group">
             <label>{{ t('item.podSelector') }}</label>
             <input v-model="editingItem.podSelector" type="text" :placeholder="t('item.podSelectorPlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.external') }}</label>
+            <select v-model="editingItem.external">
+              <option value="">{{ t('item.statusStyleUnset') }}</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <!-- Proxmox section -->
+          <div class="form-section-title">
+            <i class="mdi mdi-server-network"></i> {{ t('item.sectionProxmox') }}
+          </div>
+          <div class="form-section-desc">
+            {{ t('item.proxmoxHint') }}
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.proxmoxNode') }}</label>
+            <input v-model="editingItem.proxmoxNode" type="text" :placeholder="t('item.proxmoxNodePlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.proxmoxVMID') }}</label>
+            <input v-model="editingItem.proxmoxVMID" type="text" inputmode="numeric" :placeholder="t('item.proxmoxVMIDPlaceholder')">
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.proxmoxType') }}</label>
+            <select v-model="editingItem.proxmoxType">
+              <option value="">{{ t('item.statusStyleUnset') }}</option>
+              <option value="qemu">qemu</option>
+              <option value="lxc">lxc</option>
+            </select>
+          </div>
+          <!-- Advanced section -->
+          <div class="form-section-title">
+            <i class="mdi mdi-tune"></i> {{ t('item.sectionAdvanced') }}
+          </div>
+          <div class="form-group">
+            <label>{{ t('item.weight') }}</label>
+            <input v-model="editingItem.weight" type="text" inputmode="numeric" :placeholder="t('item.weightPlaceholder')">
           </div>
         </div>
         <div class="modal-actions">
