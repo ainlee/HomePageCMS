@@ -141,27 +141,6 @@ function settingsExist() {
   return fs.existsSync(settingsFilePath());
 }
 
-// The card badge order is a presentation preference of the editor, so it lives in
-// the editor's own settings file instead of the user's Homepage configuration.
-// Each entry maps "group/service" to the badge ids in display order.
-function sanitizeBadgeOrder(value) {
-  const out = {};
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return out;
-  for (const [key, list] of Object.entries(value)) {
-    if (typeof key !== 'string' || !key.trim() || !Array.isArray(list)) continue;
-    const ids = list
-      .filter((id) => typeof id === 'string' && id.trim())
-      .map((id) => id.trim().slice(0, 120))
-      .slice(0, 200);
-    if (ids.length) out[key.trim().slice(0, 240)] = ids;
-  }
-  return out;
-}
-
-function badgeOrderSetting() {
-  return sanitizeBadgeOrder(readCmsSettings().badgeOrder);
-}
-
 // Deployment settings: the environment variable wins, because that is how a
 // deployment (usually a container mount) says where things live.
 function resolveDeploymentSetting(name, envValue, defaultValue) {
@@ -407,7 +386,6 @@ function settingsPayload() {
     localeSource: locale.source,
     theme: theme.value,
     themeSource: theme.source,
-    badgeOrder: badgeOrderSetting(),
     localesDir: localesDirSetting().value,
     themesDir: themesDirSetting().value,
     protection: {
@@ -1178,12 +1156,6 @@ appRouter.put('/api/settings', (req, res) => {
 
     // The pointer to the settings file lives in the bootstrap file, not in the
     // settings themselves.
-    if (body.badgeOrder && typeof body.badgeOrder === 'object' && !Array.isArray(body.badgeOrder)) {
-      const order = sanitizeBadgeOrder(body.badgeOrder);
-      if (Object.keys(order).length) next.badgeOrder = order;
-      else delete next.badgeOrder;
-    }
-
     delete next.settingsPath;
     copyBackup(currentPath, 'settings');
     if (path.dirname(targetPath) && !fs.existsSync(path.dirname(targetPath))) {

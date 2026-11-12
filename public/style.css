@@ -337,79 +337,6 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Item badges container and divider in cards */
-.item-badges {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  max-width: 380px;
-}
-
-.item-badges-divider {
-  display: inline-block;
-  width: 1px;
-  height: 18px;
-  background: var(--border);
-  margin: 0 4px;
-  flex-shrink: 0;
-  opacity: 0.85;
-}
-
-.item-widget-badge {
-  font-size: 11px;
-  padding: 2px 7px;
-  border-radius: 4px;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: inherit;
-  font-weight: 500;
-  border: 1px solid transparent;
-  line-height: 1.2;
-}
-
-.item-widget-badge i {
-  font-size: 13px;
-}
-.badge-container { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
-.badge-docker {
-  background: color-mix(in srgb, #0db7ed 15%, transparent);
-  color: #0db7ed;
-  border-color: color-mix(in srgb, #0db7ed 35%, transparent);
-}
-.badge-ping { background: color-mix(in srgb, var(--info) 15%, transparent); color: var(--info); }
-.badge-monitor {
-  background: color-mix(in srgb, #10b981 15%, transparent);
-  color: #10b981;
-  border-color: color-mix(in srgb, #10b981 35%, transparent);
-}
-.badge-kubernetes {
-  background: color-mix(in srgb, #326ce5 15%, transparent);
-  color: #326ce5;
-  border-color: color-mix(in srgb, #326ce5 35%, transparent);
-}
-.badge-proxmox {
-  background: color-mix(in srgb, #e57000 15%, transparent);
-  color: #e57000;
-  border-color: color-mix(in srgb, #e57000 35%, transparent);
-}
-.badge-customapi { background: color-mix(in srgb, var(--api) 15%, transparent); color: var(--api); }
-.badge-none { background: transparent; color: var(--text-dim); }
-.badge-generic { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
-.badge-widget {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
-}
-.badge-overflow {
-  background: var(--bg);
-  color: var(--text-dim);
-  border-color: var(--border);
-  font-weight: 600;
-}
-
 .form-section-label {
   display: flex;
   align-items: center;
@@ -505,33 +432,6 @@ body {
 
 .widget-drag:active { cursor: grabbing; }
 .widget-row.is-dragging { opacity: 0.65; border-color: var(--accent); }
-
-/* Badge order chips: the first three are the ones a card displays. */
-.badge-chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
-
-.badge-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 11px;
-  color: var(--text-dim);
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-}
-
-.badge-chip.is-shown {
-  color: var(--text);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
-.badge-chip.is-dragging { opacity: 0.6; }
-.badge-chip .mdi { font-size: 13px; }
-.badge-chip-drag { cursor: grab; }
 
 .widget-row-fields {
   display: grid;
@@ -1941,11 +1841,6 @@ body {
 
   .item-desc {
     font-size: 10px;
-  }
-
-  .item-widget-badge {
-    font-size: 9px;
-    padding: 1px 4px;
   }
 
   .group-header {

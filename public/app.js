@@ -1092,80 +1092,6 @@ const cmsApp = createApp({
       setTimeout(() => { toast.show = false; }, 3000);
     }
 
-    // The badge order is a presentation preference of the editor. It lives in the
-    // editor settings file (never in the user's Homepage YAML) and is keyed by
-    // group/service, because that is what the user sees and edits.
-    const badgeOrderMap = ref({});
-    const editingBadgeOrder = ref([]);
-    const draggingBadgeIndex = ref(-1);
-
-    function badgeKeyFor(groupName, itemName) {
-      return String(groupName || '') + '/' + String(itemName || '');
-    }
-
-    // Every tracked item a card can show as a badge, in the file's natural order.
-    function badgeCandidates(item) {
-      const list = [];
-      if (item.container) list.push({ id: 'container', kind: 'docker', label: String(item.container), icon: 'mdi-docker' });
-      if (item.ping) list.push({ id: 'ping', kind: 'ping', label: String(item.ping), icon: 'mdi-access-point-network' });
-      if (item.siteMonitor) list.push({ id: 'siteMonitor', kind: 'monitor', label: 'monitor', icon: 'mdi-web' });
-      // Kubernetes hides its own indicator when the workload lives in another cluster.
-      if (item.app && item.external !== 'true') {
-        list.push({ id: 'app', kind: 'kubernetes', label: String(item.app), icon: 'mdi-kubernetes' });
-      }
-      if (item.proxmoxNode && item.proxmoxVMID) {
-        list.push({
-          id: 'proxmox',
-          kind: 'proxmox',
-          label: String(item.proxmoxNode) + '/' + String(item.proxmoxVMID),
-          icon: 'mdi-server-network'
-        });
-      }
-      (item.widgets || []).forEach((w) => {
-        if (w && w.type) list.push({ id: 'widget:' + w.type, kind: 'widget', label: w.type, icon: 'mdi-widgets-outline' });
-      });
-      return list;
-    }
-
-    // Reorder candidates so the saved ids come first, keeping any item the saved
-    // order does not know (a newly added widget) at the end.
-    function applyBadgeOrder(candidates, order) {
-      if (!Array.isArray(order) || !order.length) return candidates;
-      const pool = candidates.slice();
-      const out = [];
-      for (const id of order) {
-        const at = pool.findIndex((c) => c.id === id);
-        if (at >= 0) out.push(pool.splice(at, 1)[0]);
-      }
-      return out.concat(pool);
-    }
-
-    function orderedBadgeCandidates(item, groupName) {
-      const order = groupName ? badgeOrderMap.value[badgeKeyFor(groupName, item.name)] : null;
-      return applyBadgeOrder(badgeCandidates(item), order);
-    }
-
-    // The badges a card shows: the first three of the ordered list plus a count.
-    function itemBadges(item, groupName) {
-      const list = orderedBadgeCandidates(item, groupName);
-      if (!list.length) return [];
-      const shown = list.slice(0, 3);
-      const extra = list.length - shown.length;
-      if (extra > 0) {
-        shown.push({ kind: 'overflow', label: '+' + extra, icon: '' });
-      }
-      return shown;
-    }
-
-    function itemBadgesTooltip(item) {
-      const total = badgeCandidates(item).length;
-      return t('item.badgesTooltip', { count: total, max: 3 });
-    }
-
-    function itemWidgetBadges(item) {
-      return itemBadges(item).map((b) => b.label);
-    }
-
     // The icon of a widget card: the mdi glyph of the type, falling back to a
     // generic widget.
     function widgetIconClass(type) {
@@ -1195,12 +1121,10 @@ const cmsApp = createApp({
     // The multi-widget editor inside the item dialog: add / remove a row.
     function addWidgetRow() {
       editingItem.widgets.push({ ...blankWidget() });
-      rebuildBadgeChips();
     }
 
     function removeWidgetRow(index) {
       editingItem.widgets.splice(index, 1);
-      rebuildBadgeChips();
     }
 
     function moveWidgetRow(index, delta) {
@@ -1209,7 +1133,6 @@ const cmsApp = createApp({
       if (to < 0 || to >= list.length) return;
       const [row] = list.splice(index, 1);
       list.splice(to, 0, row);
-      rebuildBadgeChips();
     }
 
     const draggingWidgetIndex = ref(-1);
@@ -1243,7 +1166,6 @@ const cmsApp = createApp({
       list.splice(to, 0, row);
       widgetDragFrom = to;
       draggingWidgetIndex.value = to;
-      rebuildBadgeChips();
     }
 
     function endWidgetDrag() {
@@ -1253,138 +1175,6 @@ const cmsApp = createApp({
       widgetDragFrom = -1;
       draggingWidgetIndex.value = -1;
     }
-
-    // Badge chips: the order the card badges are shown in. The first three are the
-    // ones a card displays; the rest collapse into +N.
-    function rebuildBadgeChips() {
-      const chips = badgeCandidates({
-        container: (editingItem.container || '').trim(),
-        ping: (editingItem.ping || '').trim(),
-        siteMonitor: (editingItem.siteMonitor || '').trim(),
-        app: (editingItem.app || '').trim(),
-        external: editingItem.external,
-        proxmoxNode: (editingItem.proxmoxNode || '').trim(),
-        proxmoxVMID: (editingItem.proxmoxVMID || '').trim(),
-        widgets: editingItem.widgets
-      });
-      const prev = editingBadgeOrder.value.map((c) => c.id);
-      const pool = chips.map((c) => ({ ...c }));
-      const out = [];
-      for (const id of prev) {
-        const at = pool.findIndex((c) => c.id === id);
-        if (at >= 0) out.push(pool.splice(at, 1)[0]);
-      }
-      editingBadgeOrder.value = out.concat(pool);
-    }
-
-    let badgeDragFrom = -1;
-
-    function startBadgeDrag(event, index) {
-      if (event.pointerType === 'mouse' && event.button !== 0) return;
-      event.preventDefault();
-      badgeDragFrom = index;
-      draggingBadgeIndex.value = index;
-      document.addEventListener('pointermove', onBadgeDragMove);
-      document.addEventListener('pointerup', endBadgeDrag);
-      document.addEventListener('pointercancel', endBadgeDrag);
-    }
-
-    function onBadgeDragMove(event) {
-      if (badgeDragFrom < 0) return;
-      const chips = [...document.querySelectorAll('.modal .badge-chip')];
-      if (!chips.length) return;
-      let to = chips.length - 1;
-      for (let i = 0; i < chips.length; i++) {
-        const rect = chips[i].getBoundingClientRect();
-        if (event.clientX < rect.left + rect.width / 2) { to = i; break; }
-      }
-      if (to === badgeDragFrom) return;
-      const list = editingBadgeOrder.value;
-      const [chip] = list.splice(badgeDragFrom, 1);
-      list.splice(to, 0, chip);
-      badgeDragFrom = to;
-      draggingBadgeIndex.value = to;
-    }
-
-    function endBadgeDrag() {
-      document.removeEventListener('pointermove', onBadgeDragMove);
-      document.removeEventListener('pointerup', endBadgeDrag);
-      document.removeEventListener('pointercancel', endBadgeDrag);
-      badgeDragFrom = -1;
-      draggingBadgeIndex.value = -1;
-    }
-
-    // The badge order lives in the editor settings file. Only an order that differs
-    // from the natural one is stored, so most services leave no entry behind.
-    async function persistBadgeOrder() {
-      try {
-        await apiFetch('/api/settings', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ badgeOrder: badgeOrderMap.value })
-        });
-      } catch (err) {
-        showToast(t('toast.saveFailed', { msg: err.message }), 'error');
-      }
-    }
-
-    function storeBadgeOrderFor(groupName, itemName) {
-      const key = badgeKeyFor(groupName, itemName);
-      const natural = badgeCandidates({
-        container: (editingItem.container || '').trim(),
-        ping: (editingItem.ping || '').trim(),
-        siteMonitor: (editingItem.siteMonitor || '').trim(),
-        app: (editingItem.app || '').trim(),
-        external: editingItem.external,
-        proxmoxNode: (editingItem.proxmoxNode || '').trim(),
-        proxmoxVMID: (editingItem.proxmoxVMID || '').trim(),
-        widgets: editingItem.widgets
-      }).map((c) => c.id);
-      const ids = editingBadgeOrder.value.map((c) => c.id);
-      const same = ids.length === natural.length && ids.every((id, i) => id === natural[i]);
-      if (!ids.length || same) delete badgeOrderMap.value[key];
-      else badgeOrderMap.value[key] = ids;
-    }
-
-    // Renaming a group or moving a service keeps the saved badge order with it.
-    function moveBadgeKeys(oldGroup, oldName, newGroup, newName) {
-      const oldKey = badgeKeyFor(oldGroup, oldName);
-      const newKey = badgeKeyFor(newGroup, newName);
-      if (!badgeOrderMap.value[oldKey] || oldKey === newKey) return;
-      badgeOrderMap.value[newKey] = badgeOrderMap.value[oldKey];
-      delete badgeOrderMap.value[oldKey];
-      persistBadgeOrder();
-    }
-
-    function dropBadgeKeysForGroup(groupName) {
-      const prefix = String(groupName || '') + '/';
-      let changed = false;
-      for (const key of Object.keys(badgeOrderMap.value)) {
-        if (!key.startsWith(prefix)) continue;
-        delete badgeOrderMap.value[key];
-        changed = true;
-      }
-      if (changed) persistBadgeOrder();
-    }
-
-    function renameBadgeKeysForGroup(oldName, newName) {
-      if (!oldName || oldName === newName) return;
-      const prefix = String(oldName) + '/';
-      let changed = false;
-      for (const key of Object.keys(badgeOrderMap.value)) {
-        if (!key.startsWith(prefix)) continue;
-        badgeOrderMap.value[String(newName) + '/' + key.slice(prefix.length)] = badgeOrderMap.value[key];
-        delete badgeOrderMap.value[key];
-        changed = true;
-      }
-      if (changed) persistBadgeOrder();
-    }
-
-    // The badge chips follow the monitor fields as they are typed.
-    watch(
-      () => [editingItem.container, editingItem.ping, editingItem.siteMonitor],
-      () => rebuildBadgeChips()
-    );
 
     // Load data
     async function loadServices() {
@@ -1977,7 +1767,6 @@ const cmsApp = createApp({
         if (g) {
           const oldName = g.name;
           g.name = newName;
-          renameBadgeKeysForGroup(oldName, newName);
           syncGroupAppearance(oldName, newName, values);
         }
       } else {
@@ -1990,7 +1779,6 @@ const cmsApp = createApp({
     function deleteGroup(gi) {
       const g = groups.value[gi];
       if (!confirm(t('group.confirmDelete', { name: g.name, count: g.items.length }))) return;
-      dropBadgeKeysForGroup(g.name);
       groups.value.splice(gi, 1);
       deleteGroupLayoutEntry(g.name);
     }
@@ -2684,8 +2472,6 @@ const cmsApp = createApp({
         widgets: []
       });
       editingItem._targetGroupId = group.id;
-      editingItem._badgeKey = '';
-      editingBadgeOrder.value = [];
       showItemModal.value = true;
     }
 
@@ -2705,8 +2491,6 @@ const cmsApp = createApp({
         widgets: Array.isArray(item.widgets) ? item.widgets.map((w) => ({ ...w, headers: (w.headers || []).map((h) => ({ ...h })) })) : []
       });
       editingItem._targetGroupId = group.id;
-      editingItem._badgeKey = badgeKeyFor(group.name, item.name);
-      editingBadgeOrder.value = orderedBadgeCandidates(item, group.name).map((c) => ({ ...c }));
       showItemModal.value = true;
     }
 
@@ -2757,20 +2541,11 @@ const cmsApp = createApp({
           nested: false, source: null
         });
       }
-      // Keep the badge order with the service even when it is renamed or moved.
-      const newKey = badgeKeyFor(group.name, editingItem.name.trim());
-      if (editingItem._badgeKey && editingItem._badgeKey !== newKey) {
-        delete badgeOrderMap.value[editingItem._badgeKey];
-      }
-      storeBadgeOrderFor(group.name, editingItem.name.trim());
-      persistBadgeOrder();
       showItemModal.value = false;
     }
 
     function deleteItem(group, ii) {
       if (!confirm(t('item.confirmDelete', { name: group.items[ii].name }))) return;
-      delete badgeOrderMap.value[badgeKeyFor(group.name, group.items[ii].name)];
-      persistBadgeOrder();
       group.items.splice(ii, 1);
     }
 
@@ -2785,7 +2560,6 @@ const cmsApp = createApp({
       if (movingFromGroup.value === targetGroup) { showMoveModal.value = false; return; }
       const idx = movingFromGroup.value.items.indexOf(movingItem.value);
       if (idx > -1) movingFromGroup.value.items.splice(idx, 1);
-      moveBadgeKeys(movingFromGroup.value.name, movingItem.value.name, targetGroup.name, movingItem.value.name);
       targetGroup.items.push(movingItem.value);
       showMoveModal.value = false;
       showToast(t('toast.moved', { name: targetGroup.name }));
@@ -3099,7 +2873,6 @@ const cmsApp = createApp({
 
       runtimeInfo.placeholders = data.placeholders || {};
       runtimeInfo.fileValues = data.fileValues || {};
-      badgeOrderMap.value = (data.badgeOrder && typeof data.badgeOrder === 'object') ? data.badgeOrder : {};
       runtimeInfo.bindAddressEffective = data.bindAddressEffective || '';
       runtimeInfo.bindAddressSource = data.bindAddressSource || '';
       runtimeInfo.restartRequired = !!data.restartRequired;
@@ -3323,8 +3096,7 @@ const cmsApp = createApp({
       resetAllCustomCss, confirmResetAllCustomCss, probeFontUrl,
       movingItem, movingFromGroup, dragOverGroup, dropIndex, draggingItem, backups, toast,
       totalItems, activeGroups, activeTotalItems,
-      widgetTypes, widgetTypeLabel, widgetValueHint, widgetHintFor, widgetTypesConcat, itemWidgetBadges, itemBadges, itemBadgesTooltip,
-      editingBadgeOrder, draggingBadgeIndex, startBadgeDrag,
+      widgetTypes, widgetTypeLabel, widgetValueHint, widgetHintFor, widgetTypesConcat,
       addWidgetRow, removeWidgetRow, moveWidgetRow, startWidgetDrag, draggingWidgetIndex,
       iconPreviewUrl, isMdiIcon, mdiClassOf,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,
