@@ -1984,8 +1984,9 @@ body {
 /* The widget-type picker is a custom dropdown: native <option> cannot lay out
    a name on the left and a one-line hint on the right of the same row. The
    trigger mirrors .form-group select so the field does not jump when it is
-   swapped in; the list hangs under it. A hint wider than its column scrolls
-   as a marquee (two copies, seamless) instead of being cut off. */
+   swapped in; the list hangs under it. A hint wider than its column slides
+   back and forth between the two clipped ends (a single copy) instead of
+   being cut off. */
 .select-hint { position: relative; }
 .select-hint .sh-trigger {
   display: flex; align-items: center; gap: 6px; width: 100%;
@@ -2021,20 +2022,21 @@ body {
   flex: 1; min-width: 0; text-align: right; color: var(--text-dim);
   font-size: 11px; overflow: hidden;
 }
-.select-hint .sh-hint-run { display: inline-flex; white-space: nowrap; }
-/* Each copy carries its own right margin so the loop gap is uniform; the
-   marquee then runs exactly one copy + gap (50% of the two-copy run) before
-   the pattern repeats, which is what makes the seam invisible. */
-.select-hint .sh-hint-copy { flex-shrink: 0; margin-right: 24px; }
-.select-hint .sh-marquee .sh-hint-run { animation: sh-marquee 8s linear infinite; }
+/* A single copy of the hint, right-aligned; when it fits the column the copy
+   sits still at the right edge. nowrap keeps the measured travel honest. */
+.select-hint .sh-hint-copy { display: inline-block; white-space: nowrap; vertical-align: top; }
+/* When it does not fit, the JS stores the travel distance on the row as
+   --sh-marquee-x and the copy sweeps between the two clipped ends: the tail
+   is fully visible at rest, the head at the far end, so every part of the
+   text shows. */
+.select-hint .sh-marquee .sh-hint-copy { animation: sh-marquee 3s ease-in-out infinite alternate; }
 @keyframes sh-marquee {
   from { transform: translateX(0); }
-  to   { transform: translateX(-50%); }
+  to   { transform: translateX(var(--sh-marquee-x, 0px)); }
 }
 /* A user who prefers reduced motion gets a static, ellipsised hint instead of
-   the scroll: the tail of the text stays reachable, nothing moves. */
-.select-hint .sh-clip .sh-hint-run { animation: none; transform: none; }
-.select-hint .sh-clip .sh-opt-hint { text-overflow: ellipsis; }
+   the slide: the text sits still, truncated with an ellipsis. */
+.select-hint .sh-clip .sh-hint-copy { overflow: hidden; max-width: 100%; text-overflow: ellipsis; }
 @media (prefers-reduced-motion: reduce) {
-  .select-hint .sh-marquee .sh-hint-run { animation: none; transform: none; }
+  .select-hint .sh-marquee .sh-hint-copy { animation: none; }
 }

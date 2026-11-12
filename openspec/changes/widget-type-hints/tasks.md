@@ -13,16 +13,16 @@
 ## 2. 前端元件
 
 - [x] 2.1 app.js 新增 select-hint 元件（trigger 加 listbox 選單、選項列左名稱
-      右提示、跑馬燈 class 與量測、鍵盤與焦點、aria）；註冊到元件清單
+      右提示、左右滑動 class 與量測、鍵盤與焦點、aria）；註冊到元件清單
 - [x] 2.2 index.html：服務卡片 dialog 的 widget 型別下拉與資訊小工具 dialog 的
       型別下拉改用 select-hint；未建模型別的「原值保留」選項保留行為
-- [x] 2.3 style.css：選項列兩欄版面、跑馬燈 keyframes、prefers-reduced-motion
+- [x] 2.3 style.css：選項列兩欄版面、左右滑動 keyframes、prefers-reduced-motion
       靜止截斷、選單最大高度與捲動；不動其他原生 select
 
 ## 3. 驗證
 
 - [x] 3.1 tests/verify-select-hints.mjs：展開顯示名稱加提示、缺 key 退回、
-      長提示跑馬燈（量測斷言）、鍵盤選定、點外部收起、行動版窄欄不溢出；
+      長提示左右滑動（量測斷言）、鍵盤選定、點外部收起、行動版窄欄不溢出；
       納入 npm test 主鏈
 - [x] 3.2 ping 存檔路徑測試：選 ping 填 host 存檔後 YAML 含 ping 欄位（或
       widget 物件）、複數 widgets 時不含遗留的 host 欄位錯誤

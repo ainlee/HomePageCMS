@@ -81,8 +81,9 @@ const IconField = {
   // option name. Native <select> options cannot lay out two columns, so the
   // widget-type pickers (which list 170+ raw type names) use this instead: the
   // trigger shows the current name plus its hint, the list shows name-left /
-  // hint-right per row, and a hint that is wider than its column scrolls as
-  // a marquee (static under prefers-reduced-motion). Keyboard mirrors a
+  // hint-right per row, and a hint that is wider than its column slides back
+  // and forth between the two clipped ends (a single copy; static,
+  // ellipsised, under prefers-reduced-motion). Keyboard mirrors a
   // native select: open with Enter/Space, move with arrows, commit with
   // Enter, close with Esc or a click outside.
   const SelectHint = {
@@ -124,23 +125,26 @@ const IconField = {
         activeIndex.value = i < 0 ? 0 : i;
       }
 
-      // A hint only marquee-scrolls when it is actually wider than its
-      // column; otherwise it sits still. Measuring after open (fonts may have
-      // loaded since first paint) and after a language switch (the text
-      // changes length) keeps the class in step with the content.
+      // A hint only slides when it is actually wider than its column;
+      // otherwise it sits still, right-aligned. Measuring after open (fonts
+      // may have loaded since first paint) and after a language switch (the
+      // text changes length) keeps the class in step with the content.
+      // offsetWidth reads the layout width (the full un-clipped text extent),
+      // so a running animation never skews the next measurement.
       function measureOverflow() {
         for (const el of optEls.value) {
           if (!el) continue;
           const hint = el.querySelector('.sh-opt-hint');
           const copy = hint && hint.querySelector('.sh-hint-copy');
           if (!hint || !copy) { el.classList.remove('sh-marquee', 'sh-clip'); continue; }
-          // Compare the single copy of the text (the duplicated second copy
-          // would overflow every column and marquee everything): one copy
-          // plus the gap between copies against the visible column width.
-          const copyWidth = copy.getBoundingClientRect().width;
-          const overflows = copyWidth + 24 > hint.clientWidth + 2;
-          el.classList.toggle('sh-marquee', overflows && !reducedMotion.value);
-          el.classList.toggle('sh-clip', overflows && reducedMotion.value);
+          // The single copy of the text against the visible column width:
+          // a positive difference is the travel that brings the hidden head
+          // of the hint into view at the end of each sweep.
+          const over = copy.offsetWidth - hint.clientWidth;
+          const overflowed = over > 2;
+          el.classList.toggle('sh-marquee', overflowed && !reducedMotion.value);
+          el.classList.toggle('sh-clip', overflowed && reducedMotion.value);
+          el.style.setProperty('--sh-marquee-x', over > 0 ? over + 'px' : '0px');
         }
       }
       function onOpen() {
@@ -213,8 +217,7 @@ const IconField = {
       '      @click="choose(o)" @mouseenter="activeIndex = i">' +
       '      <span class="sh-opt-label">{{ o.label }}</span>' +
       '      <span class="sh-opt-hint" v-if="o.hint">' +
-      '        <span class="sh-hint-run"><span class="sh-hint-copy">{{ o.hint }}</span>' +
-      '        <span class="sh-hint-copy" aria-hidden="true">{{ o.hint }}</span></span>' +
+      '        <span class="sh-hint-copy">{{ o.hint }}</span>' +
       '      </span>' +
       '    </button>' +
       '  </div>' +

@@ -13,18 +13,19 @@ src/widgets 的型別），使用者根本選不到最基本的 ping 追蹤。
   替代服務卡片 dialog 與資訊小工具 dialog 的型別下拉；其他下拉維持原生不動。
 - 說明文字走語系：widgets.<type>.hint，對型別清單裡的每一筆型別都寫入提示；檔案裡有、型別清單沒有的型別
   缺 key 時照舊退回、該列右側留空（既有慣例），版面不受影響。
-- 說明文字超過欄位寬度時，該行右側做水平跑馬燈（CSS 動畫、文字重複一次、
-  prefers-reduced-motion 時靜止不捲），而不是截斷省略。
+- 說明文字超過欄位寬度時，該行右側以左右來回滑動的方式顯示全段文字
+（CSS 動畫、單一文字複本、擺動距離等於溢出量、
+  prefers-reduced-motion 時靜止並省略號截斷），而不是整段藏掉。
 - public/widget-types.js 補上 ping；widgetTypeLabel 對它給出本地化名稱、
   widgetValueHint 對它給出 IP 佔位提示。
 - 自繪下拉照搬原生行為：鍵盤 ↑↓、Enter 確認、Esc 收起來、點外部收起來、
-  focus 管理；與 .form-group 同寬同高，行動版欄位窄時跑馬燈照樣工作。
+  focus 管理；與 .form-group 同寬同高，行動版欄位窄時左右滑動照樣工作。
 
 ## Capabilities
 
 ### New Capabilities
 
-- select-hints：自繪下拉的選項列版面（名稱＋右側說明、跑馬燈、鍵盤與焦點行為）
+- select-hints：自繪下拉的選項列版面（名稱＋右側說明、左右滑動、鍵盤與焦點行為）
   與提示文字的語系化（缺譯退回、缺提示留空）。
 
 ### Modified Capabilities

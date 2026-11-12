@@ -30,8 +30,10 @@ Non-goal：不改其他欄位的原生下拉；不改存檔、hash、備份流�
 - ping 的存檔路徑零改動：normalizeWidgets、buildWidgetObject、writeWidgets
   已認得 ping 型別與 legacy-ping 語法（host 值寫回 service.ping），只補
   下拉選項與提示。
-- 跑馬燈：選單展開時量測提示渲染寬度，超過右側可用寬度才加 marquee class；
-  CSS keyframes 平移兩份重複文字；prefers-reduced-motion 時不捲、改省略號
+- 左右滑動：選單展開時量測提示渲染寬度（單一文字複本的 offsetWidth），
+  超過右側可用寬度才加 sh-marquee class 並把溢出量寫進 --sh-marquee-x；
+  CSS keyframes 讓該複本在兩個裁切端之間來回擺動（alternate），
+  任一極端都能讀到整段文字；prefers-reduced-motion 時不擺、改省略號
   截斷。量測失敗（例如字體未載入）時靜止顯示，不影響選取。
 - 鍵盤與無障礙：trigger 按 Enter 或 Space 開啟、上下鍵移動、Enter 選定、
   Esc 收起、Tab 或點外部收起；選單 role 為 listbox、選項 role 為 option、
@@ -41,7 +43,7 @@ Non-goal：不改其他欄位的原生下拉；不改存檔、hash、備份流�
 
 - 自繪下拉觸控目標比原生小：trigger 高度與 form-group 控制件一致、選單設
   最大高度與捲動；行動版無頭測試加斷言。
-- 跑馬燈量測時機錯（語系剛切完、字體載入慢）：展開與語系切換時重量測；
+- 滑動量測時機錯（語系剛切完、字體載入慢）：展開與語系切換時重量測；
   失敗時靜止顯示。
 - 產生器重跑覆蓋手動行：產生器改為合併寫入，重跑結果可重現。
 

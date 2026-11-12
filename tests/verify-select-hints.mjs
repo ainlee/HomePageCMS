@@ -1,5 +1,5 @@
 // Checks the select-hint widget-type dropdown: the name+hint row layout, the
-// missing-key fallback, the marquee mechanism, keyboard selection,
+// missing-key fallback, the single-copy hint slide, keyboard selection,
 // outside-click close, narrow mobile overflow, and the ping save path.
 //
 // Seeds a services file through the API, drives the editor, saves, and
@@ -91,11 +91,11 @@ const rowArr = JSON.parse(rows);
 check('known type rows carry their hint text', rowArr.length >= 3 && rowArr.every((r) => r.hint !== ''), rows);
 check('hints are right-aligned in the row', rowArr.every((r) => r.hintAlign === 'right'), rowArr.map((r) => r.hintAlign).join(','));
 
-// Marquee mechanism: the hint text is duplicated in the run so an
-// overflowing hint can scroll seamlessly; short hints sit still.
-const marquee = await ev('(() => { const sh = document.querySelector(".widget-row .widget-type"); const opt = [...sh.querySelectorAll(".sh-opt")].find((o) => o.querySelector(".sh-opt-hint")); if (!opt) return "no-hint-opt"; const run = opt.querySelector(".sh-hint-run"); const copies = run ? run.querySelectorAll(".sh-hint-copy").length : 0; return JSON.stringify({ copies, marquee: opt.classList.contains("sh-marquee"), clip: opt.classList.contains("sh-clip") }); })()');
-const mq = JSON.parse(marquee);
-check('the marquee mechanism duplicates the hint text', mq.copies === 2, marquee);
+// Hint rendering: the text is a single copy (a duplicated second copy would
+// show twice when the slide is not running).
+const slide = await ev('(() => { const sh = document.querySelector(".widget-row .widget-type"); const opt = [...sh.querySelectorAll(".sh-opt")].find((o) => o.querySelector(".sh-opt-hint")); if (!opt) return "no-hint-opt"; const copies = opt.querySelectorAll(".sh-hint-copy").length; return JSON.stringify({ copies, marquee: opt.classList.contains("sh-marquee"), clip: opt.classList.contains("sh-clip") }); })()');
+const sq = JSON.parse(slide);
+check('the hint text renders exactly once', sq.copies === 1, slide);
 
 // Close the Pinger dialog and open the Multi service: its second widget
 // row carries the unknown legacyfake type, whose option row has no hint
@@ -144,6 +144,11 @@ await cdp.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, 
 await sleep(400);
 await ev('(() => { const t = document.querySelector(".widget-row .widget-type .sh-trigger"); if (t) t.click(); return true; })()');
 await sleep(300);
+// The long hint travels: a positive travel distance means the single copy
+// sweeps to the clipped end and shows the whole text.
+const slideVal = await ev('(() => { const sh = document.querySelector(".widget-row .widget-type"); const opt = [...sh.querySelectorAll(".sh-opt")].find((o) => o.classList.contains("sh-marquee")); if (!opt) return JSON.stringify({ noMarquee: true }); const m = opt.style.getPropertyValue("--sh-marquee-x"); return JSON.stringify({ marquee: true, x: m }); })()');
+const sv = JSON.parse(slideVal);
+check('mobile: an overflowing hint carries its slide distance', sv.marquee === true && /px$/.test(sv.x), slideVal);
 const mobile = await ev('(() => { const list = document.querySelector(".widget-row .widget-type .sh-list"); if (!list) return JSON.stringify({ noList: true }); return JSON.stringify({ sw: list.scrollWidth, cw: list.clientWidth }); })()');
 const mob = JSON.parse(mobile);
 check('mobile: the open listbox does not overflow its column', !mob.noList && mob.sw <= mob.cw + 2, mobile);
