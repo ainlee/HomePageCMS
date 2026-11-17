@@ -149,8 +149,8 @@ const cpiSvc = findSvc('Cpi');
 const boxSvc = findSvc('Box');
 
 check('the unmodelled highlight key survives a save', !!sonarrSvc.widget.highlight, JSON.stringify(sonarrSvc.widget && Object.keys(sonarrSvc.widget)));
-check('siteMonitor / statusStyle / showStats survive',
-  sonarrSvc.siteMonitor === 'http://sonarr.host' && sonarrSvc.statusStyle === 'dot' && sonarrSvc.showStats === true,
+check('siteMonitor / statusStyle survive; a legacy per-item showStats true is dropped',
+  sonarrSvc.siteMonitor === 'http://sonarr.host' && sonarrSvc.statusStyle === 'dot' && !('showStats' in sonarrSvc),
   JSON.stringify({ siteMonitor: sonarrSvc.siteMonitor, statusStyle: sonarrSvc.statusStyle, showStats: sonarrSvc.showStats }));
 check('a multi-widget service keeps the widgets array',
   Array.isArray(radarrSvc.widgets) && radarrSvc.widgets.length === 2 && !!radarrSvc.widget,

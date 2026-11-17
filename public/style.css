@@ -705,6 +705,28 @@ body {
   margin-bottom: 4px;
 }
 
+.form-group label.label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* The inheritance / range hint that hangs from the right of a label row:
+   one line, it truncates instead of wrapping, and a danger flavour for values
+   the backend will not accept. */
+.form-group label .label-hint {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form-group label .label-hint.label-danger { color: var(--danger); }
+
 .form-group input,
 .form-group select {
   width: 100%;
@@ -1145,6 +1167,13 @@ body {
   color: var(--danger);
 }
 
+/* The override mark of a layout group row, next to the summary tag. */
+.layout-override-mark {
+  color: var(--danger);
+  font-size: 15px;
+  flex: none;
+}
+
 .layout-group-actions {
   display: flex;
   gap: 4px;
@@ -1234,6 +1263,30 @@ body {
 }
 
 .group-tab-tag i { font-size: 14px; }
+
+/* The layout summary on a group card: the effective style (an unset style
+   renders as columns) with the column count when the style is row. */
+.group-layout-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-hover);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex: none;
+}
+
+.group-layout-tag i { font-size: 13px; }
+
+/* A group field that overrides the global switch the group would otherwise
+   inherit, so the override is visible without opening the dialog. */
+.group-override-mark {
+  color: var(--danger);
+  font-size: 15px;
+  flex: none;
+}
 
 /* The read-only tab overview of the layout panel: one bucket per tab name
    (plus the unassigned one) with the groups that fall into it. */

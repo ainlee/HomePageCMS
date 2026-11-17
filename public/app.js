@@ -1390,7 +1390,9 @@ const cmsApp = createApp({
         proxmoxType: config.proxmoxType != null ? String(config.proxmoxType) : '',
         siteMonitor: config.siteMonitor || '',
         statusStyle: config.statusStyle || '',
-        showStats: config.showStats === true ? 'true' : config.showStats === false ? 'false' : '',
+        // Upstream only a per-item false closes the stats; a true behaves
+        // like unset, so the dialog maps true onto 'follows global'.
+        showStats: config.showStats === false ? 'false' : '',
         widgets: normalizeWidgets(config),
         nested: false,
         source: config
@@ -1569,6 +1571,9 @@ const cmsApp = createApp({
         // takes the hash the first one returned, so the two saves do not
         // refuse each other.
         let settingsTouched = false;
+        // The layout save can drop out-of-range values and answer with the
+        // names of the drops; it is reported after the success toast.
+        let layoutRangeWarning = null;
         if (appearanceDirty.value) {
           const res = await apiFetch('/api/homepage-settings', {
             method: 'PUT',
@@ -1598,10 +1603,15 @@ const cmsApp = createApp({
           });
           const json = await res.json();
           if (!json.success) throw new Error(json.error || t('toast.unknownError'));
+          layoutRangeWarning = json.error;
           appearanceHash.value = json.hash || null;
           layoutHash.value = json.hash || null;
           const savedValues = (json.data && json.data.values) || {};
           for (const key of LAYOUT_GLOBAL_KEYS) layoutLoadedValues[key] = savedValues[key] || '';
+          // The server is the authority on what a save kept: a dropped
+          // out-of-range value must not stay in the form, or the panel would
+          // keep claiming there is something to save.
+          for (const key of LAYOUT_GLOBAL_KEYS) layoutValues[key] = savedValues[key] || '';
           if (json.data && Array.isArray(json.data.groups)) {
             layoutGroups.value = json.data.groups.map((g) => ({ ...g }));
             layoutMeta.value.groups = json.data.groups;
@@ -1620,6 +1630,7 @@ const cmsApp = createApp({
           }
         }
         showToast(t('toast.saved'));
+        if (layoutRangeWarning) showToast(layoutRangeWarning, 'error');
         refreshPreview();
       } catch (err) {
         showToast(t('toast.saveFailed', { msg: err.message }), 'error');
@@ -1659,8 +1670,9 @@ const cmsApp = createApp({
           if (item.external === 'true') conf.external = true;
           else if (item.external === 'false') conf.external = false;
           else delete conf.external;
-          if (item.showStats === 'true') conf.showStats = true;
-          else if (item.showStats === 'false') conf.showStats = false;
+          // The dialog's 'follows global' and 'unset' both mean no per-item
+          // value, so only an explicit false reaches the file.
+          if (item.showStats === 'false') conf.showStats = false;
           else delete conf.showStats;
           const weightRaw = String(item.weight ?? '').trim();
           if (weightRaw === '') delete conf.weight;
@@ -1706,10 +1718,119 @@ const cmsApp = createApp({
       return entry ? String(entry.tab || '').trim() : '';
     }
 
+    // The style a group actually renders with: an unset style falls back to
+    // the columns style upstream, so the card shows it instead of staying blank.
+    function groupStyleOf(name) {
+      const entry = layoutEntryOf(name);
+      return String((entry && entry.style) || '').trim() || 'columns';
+    }
+
+    // The column count of a card summary: it applies to the row style only.
+    function groupColumnsOf(name) {
+      const entry = layoutEntryOf(name);
+      if (!entry || String(entry.style || '').trim() !== 'row') return '';
+      const c = Number(entry.columns);
+      return Number.isInteger(c) && c >= 2 && c <= 8 ? String(c) : '';
+    }
+
+    // The tab hint of a group dialog: when any other group carries a tab and
+    // this one does not, upstream shows the group on every tab.
+    // The value of the field being edited decides, so a rename cannot mask
+    // the hint.
+    function groupTabHint(name, tabValue) {
+      const hasOtherTab = layoutGroups.value.some((g) => g.name !== name && String(g.tab || '').trim());
+      if (hasOtherTab && !String(tabValue || '').trim()) return t('group.tabAllTabs');
+      return '';
+    }
+
+    // The inheritance hint of a field that falls back to a global switch.
+    // An unset value shows the inherited global value, or the upstream default
+    // when the global itself is unset; a value that disagrees with the
+    // global shows an override note.
+    function inheritHint(globalKey, value, labels) {
+      if (!layoutReady.value) return '';
+      const v = String(value == null ? '' : value).trim();
+      const gv = String(layoutValues[globalKey] == null ? '' : layoutValues[globalKey]).trim();
+      const gvLabel = gv === 'true' ? labels.on : gv === 'false' ? labels.off : gv;
+      if (!v) {
+        if (gv) return t('common.inheritValue', { value: gvLabel });
+        return t('common.inheritUnset', { default: labels.def });
+      }
+      if (gv && v !== gv) return t('common.overrideGlobal', { value: gvLabel });
+      return '';
+    }
+
+    // The override mark of the card summary: true when a group field disagrees
+    // with the global switch it would otherwise inherit.
+    function groupOverrideMark(name) {
+      if (!layoutReady.value) return false;
+      const entry = layoutEntryOf(name);
+      if (!entry) return false;
+      const pairs = [['initiallyCollapsed', 'groupsInitiallyCollapsed'], ['useEqualHeights', 'useEqualHeights']];
+      for (const pr of pairs) {
+        const fv = String(entry[pr[0]] || '').trim();
+        const gv = layoutValues[pr[1]];
+        const gvt = String(gv == null ? '' : gv).trim();
+        if (fv && gvt && fv !== gvt) return true;
+      }
+      return false;
+    }
+
+    // A global int field out of its valid range, shown next to the input.
+    function intOutOfRange(key) {
+      const v = String(layoutValues[key] == null ? '' : layoutValues[key]).trim();
+      if (!v) return false;
+      return !/^\d+$/.test(v) || Number(v) < 5 || Number(v) > 8;
+    }
+
+    // The group dialog's hint for the initial-collapse field, bound to the
+    // editing value so the hint tracks the dialog, not the stored entry.
+    function collapsedHint(value) {
+      return inheritHint('groupsInitiallyCollapsed', value, {
+        on: t('group.collapseOn'), off: t('group.collapseOff'), def: t('group.defaultOpen')
+      });
+    }
+
+    // The group dialog's hint for the equal-heights field.
+    function equalHeightsHint(value) {
+      return inheritHint('useEqualHeights', value, {
+        on: t('layout.on'), off: t('layout.off'), def: t('group.defaultOff')
+      });
+    }
+
+    // The item dialog's hint for the status style: unset inherits the global,
+    // or the upstream default (no value: the full status display) when the
+    // global is unset; a value that disagrees with the global is an override.
+    function statusStyleHint(value) {
+      return inheritHint('statusStyle', value, {
+        on: '', off: '', def: t('item.statusStyleDefault')
+      });
+    }
+
+    // The item dialog's hint for the stats expansion. The dialog only offers
+    // 'follows global' or an explicit off, so the hint names what the follow
+    // resolves to.
+    function showStatsHint(value) {
+      if (!layoutReady.value) return '';
+      const gv = String(layoutValues.showStats == null ? '' : layoutValues.showStats).trim();
+      const onLabel = gv === 'true' ? t('item.showStatsOn') : t('item.showStatsDefault');
+      if (String(value == null ? '' : value).trim() === 'false') {
+        return gv === 'true' ? t('common.overrideGlobal', { value: t('item.showStatsOn') }) : '';
+      }
+      return t('common.inheritUnset', { default: onLabel });
+    }
+
     function appearanceOf(name) {
       const entry = layoutEntryOf(name);
       const out = {};
       for (const f of GROUP_APPEARANCE_FIELDS) {
+        if (f === 'header') {
+          // The header is a binary switch: upstream only an explicit false
+          // hides it, so a stored true normalizes onto the "show" choice.
+          const raw = entry ? entry.header : undefined;
+          out.header = raw !== undefined && raw !== null && String(raw) === 'false' ? 'false' : '';
+          continue;
+        }
         out[f] = entry ? String(entry[f] !== undefined && entry[f] !== null ? entry[f] : '') : '';
       }
       return out;
@@ -2328,7 +2449,7 @@ const cmsApp = createApp({
       Object.assign(editingLayoutGroup, {
         name: lg.name, tab: lg.tab || '', style: lg.style || '',
         columns: String(lg.columns || ''), icon: lg.icon || '',
-        header: lg.header || '', initiallyCollapsed: lg.initiallyCollapsed || '',
+        header: lg.header != null && String(lg.header) === 'false' ? 'false' : '', initiallyCollapsed: lg.initiallyCollapsed || '',
         useEqualHeights: lg.useEqualHeights || ''
       });
       showLayoutGroupModal.value = true;
@@ -2395,7 +2516,14 @@ const cmsApp = createApp({
         const json = await res.json();
         if (!json.success) throw new Error(json.error || t('toast.unknownError'));
         layoutHash.value = json.hash || null;
-        for (const key of LAYOUT_GLOBAL_KEYS) layoutLoadedValues[key] = ((json.data && json.data.values) || {})[key] || '';
+        const savedValues = ((json.data && json.data.values) || {});
+        for (const key of LAYOUT_GLOBAL_KEYS) {
+          layoutLoadedValues[key] = savedValues[key] || '';
+          // The server is the authority on what a save kept: a dropped
+          // out-of-range value must not stay in the form, or the panel would
+          // keep claiming there is something to save.
+          layoutValues[key] = savedValues[key] || '';
+        }
         if (json.data && Array.isArray(json.data.groups)) {
           layoutGroups.value = json.data.groups.map((g) => ({ ...g }));
           layoutMeta.value.groups = json.data.groups;
@@ -2405,6 +2533,9 @@ const cmsApp = createApp({
           showToast(t('toast.revalidateNeeded'), 'error');
         }
         showToast(t('toast.saved'));
+        // A successful save can still drop out-of-range values; the drop is
+        // the message that sticks, so it lands after the success toast.
+        if (json.error) showToast(json.error, 'error');
         refreshPreview();
       } catch (err) {
         showToast(t('toast.saveFailed', { msg: err.message }), 'error');
@@ -3103,7 +3234,8 @@ const cmsApp = createApp({
       addWidgetRow, removeWidgetRow, moveWidgetRow, startWidgetDrag, draggingWidgetIndex,
       iconPreviewUrl, isMdiIcon, mdiClassOf,
       loadServices, loadBookmarks, save, saveAll, addGroup, editGroup, saveGroup, deleteGroup, toggleGroup,
-      groupTabOf,
+      groupTabOf, groupTabHint, groupStyleOf, groupColumnsOf, inheritHint, groupOverrideMark, intOutOfRange,
+      collapsedHint, equalHeightsHint, statusStyleHint, showStatsHint,
       addItem, editItem, saveItem, deleteItem,
       moveItemToGroup, confirmMove,
       startCardDrag, moveItemUp, moveItemDown,

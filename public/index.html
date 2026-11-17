@@ -111,6 +111,11 @@
               <span v-if="groupTabOf(group.name)" class="group-tab-tag">
                 <i class="mdi mdi-tab"></i> {{ groupTabOf(group.name) }}
               </span>
+              <span class="group-layout-tag">
+                <i class="mdi mdi-view-split-horizontal"></i> {{ groupStyleOf(group.name) }}{{ groupColumnsOf(group.name) ? ' × ' + groupColumnsOf(group.name) : '' }}
+              </span>
+              <i v-if="groupOverrideMark(group.name)" class="mdi group-override-mark mdi-source-branch"
+                 :title="t('common.overrideGlobalTitle')"></i>
               <span class="group-badge">{{ group.items.length }}</span>
               <div class="group-actions">
                 <button @click.stop="editGroup(group)" class="btn btn-icon" :title="t('group.edit')">
@@ -176,6 +181,11 @@
               <span v-if="groupTabOf(group.name)" class="group-tab-tag">
                 <i class="mdi mdi-tab"></i> {{ groupTabOf(group.name) }}
               </span>
+              <span class="group-layout-tag">
+                <i class="mdi mdi-view-split-horizontal"></i> {{ groupStyleOf(group.name) }}{{ groupColumnsOf(group.name) ? ' × ' + groupColumnsOf(group.name) : '' }}
+              </span>
+              <i v-if="groupOverrideMark(group.name)" class="mdi group-override-mark mdi-source-branch"
+                 :title="t('common.overrideGlobalTitle')"></i>
               <span class="group-badge">{{ group.items.length }}</span>
               <div class="group-actions">
                 <button @click.stop="editBookmarkGroup(group)" class="btn btn-icon" :title="t('group.edit')">
@@ -441,9 +451,11 @@
                   <span v-if="lg.tab" class="layout-group-tag">
                     <i class="mdi mdi-tab"></i> {{ lg.tab }}
                   </span>
-                  <span v-if="lg.style" class="layout-group-tag">
-                    <i class="mdi mdi-view-split-horizontal"></i> {{ lg.style }}{{ lg.columns ? ' × ' + lg.columns : '' }}
+                  <span class="layout-group-tag">
+                    <i class="mdi mdi-view-split-horizontal"></i> {{ groupStyleOf(lg.name) }}{{ groupColumnsOf(lg.name) ? ' × ' + groupColumnsOf(lg.name) : '' }}
                   </span>
+                  <i v-if="groupOverrideMark(lg.name)" class="mdi layout-override-mark mdi-source-branch"
+                     :title="t('common.overrideGlobalTitle')"></i>
                 </div>
                 <div class="layout-group-actions">
                   <button @click="editOrphanLayoutGroup(lg)" class="btn btn-icon" :title="t('layout.editGroup')">
@@ -538,11 +550,17 @@
                   </select>
                 </div>
                 <div class="form-group">
-                  <label>{{ t('layout.maxGroupColumns') }}</label>
+                  <label class="label-row">
+                    <span>{{ t('layout.maxGroupColumns') }}</span>
+                    <span v-if="intOutOfRange('maxGroupColumns')" class="label-hint label-danger">{{ t('layout.outOfRange') }}</span>
+                  </label>
                   <input v-model="layoutValues.maxGroupColumns" type="text" inputmode="numeric" placeholder="5-8">
                 </div>
                 <div class="form-group">
-                  <label>{{ t('layout.maxBookmarkGroupColumns') }}</label>
+                  <label class="label-row">
+                    <span>{{ t('layout.maxBookmarkGroupColumns') }}</span>
+                    <span v-if="intOutOfRange('maxBookmarkGroupColumns')" class="label-hint label-danger">{{ t('layout.outOfRange') }}</span>
+                  </label>
                   <input v-model="layoutValues.maxBookmarkGroupColumns" type="text" inputmode="numeric" placeholder="5-8">
                 </div>
                 <div class="form-group">
@@ -708,7 +726,10 @@
         <h3 class="modal-section-title"><i class="mdi mdi-palette-outline"></i> {{ t('group.appearance') }}</h3>
         <div class="form-grid">
           <div class="form-group tab-field">
-            <label>{{ t('group.tab') }}</label>
+            <label class="label-row">
+              <span>{{ t('group.tab') }}</span>
+              <span class="label-hint">{{ groupTabHint(editingGroup.name, editingGroup.tab) }}</span>
+            </label>
             <input id="svc-group-tab" v-model="editingGroup.tab" list="svc-tab-options" type="text"
                    :placeholder="t('group.tabPlaceholder')" autocomplete="off">
             <datalist id="svc-tab-options">
@@ -722,30 +743,35 @@
                 <i class="mdi mdi-close"></i>
               </button>
             </div>
-            <p class="field-hint">{{ t('group.tabHint') }}</p>
           </div>
           <div class="form-group">
             <label>{{ t('group.style') }}</label>
-            <select v-model="editingGroup.style">
-              <option value="">{{ t('layout.notSet') }}</option>
+            <select id="svc-group-style" v-model="editingGroup.style">
+              <option value="">{{ t('group.styleUnsetColumns') }}</option>
               <option value="columns">columns</option>
               <option value="row">row</option>
             </select>
           </div>
           <div class="form-group">
-            <label>{{ t('group.columns') }}</label>
-            <input v-model="editingGroup.columns" type="text" inputmode="numeric" :placeholder="t('layout.columnsHint')">
+            <label class="label-row">
+              <span>{{ t('group.columns') }}</span>
+              <span class="label-hint" v-if="editingGroup.style !== 'row'">{{ t('group.columnsRowOnly') }}</span>
+            </label>
+            <input id="svc-group-columns" v-model="editingGroup.columns" type="text" inputmode="numeric"
+                   :placeholder="t('layout.columnsHint')" :disabled="editingGroup.style !== 'row'">
           </div>
           <div class="form-group">
             <label>{{ t('group.header') }}</label>
             <select v-model="editingGroup.header">
-              <option value="">{{ t('layout.notSet') }}</option>
-              <option value="true">{{ t('layout.on') }}</option>
-              <option value="false">{{ t('layout.off') }}</option>
+              <option value="">{{ t('group.headerShow') }}</option>
+              <option value="false">{{ t('group.headerHide') }}</option>
             </select>
           </div>
           <div class="form-group">
-            <label>{{ t('group.initiallyCollapsed') }}</label>
+            <label class="label-row">
+              <span>{{ t('group.initiallyCollapsed') }}</span>
+              <span class="label-hint">{{ collapsedHint(editingGroup.initiallyCollapsed) }}</span>
+            </label>
             <select v-model="editingGroup.initiallyCollapsed">
               <option value="">{{ t('layout.notSet') }}</option>
               <option value="true">{{ t('layout.on') }}</option>
@@ -753,7 +779,10 @@
             </select>
           </div>
           <div class="form-group">
-            <label>{{ t('group.useEqualHeights') }}</label>
+            <label class="label-row">
+              <span>{{ t('group.useEqualHeights') }}</span>
+              <span class="label-hint">{{ equalHeightsHint(editingGroup.useEqualHeights) }}</span>
+            </label>
             <select v-model="editingGroup.useEqualHeights">
               <option value="">{{ t('layout.notSet') }}</option>
               <option value="true">{{ t('layout.on') }}</option>
@@ -778,33 +807,42 @@
             <input id="layout-group-name" v-model="editingLayoutGroup.name" type="text" :placeholder="t('layout.groupNameHint')">
           </div>
           <div class="form-group">
-            <label>{{ t('layout.tab') }}</label>
+            <label class="label-row">
+              <span>{{ t('layout.tab') }}</span>
+              <span class="label-hint">{{ groupTabHint(editingLayoutGroup.name, editingLayoutGroup.tab) }}</span>
+            </label>
             <input v-model="editingLayoutGroup.tab" type="text" :placeholder="t('layout.tabHint')">
           </div>
           <div class="form-group">
             <label>{{ t('layout.style') }}</label>
-            <select v-model="editingLayoutGroup.style">
-              <option value="">{{ t('layout.notSet') }}</option>
+            <select id="layout-group-style" v-model="editingLayoutGroup.style">
+              <option value="">{{ t('layout.styleUnsetColumns') }}</option>
               <option value="columns">columns</option>
               <option value="row">row</option>
             </select>
           </div>
           <div class="form-group">
-            <label>{{ t('layout.columns') }}</label>
-            <input v-model="editingLayoutGroup.columns" type="text" inputmode="numeric" :placeholder="t('layout.columnsHint')">
+            <label class="label-row">
+              <span>{{ t('layout.columns') }}</span>
+              <span class="label-hint" v-if="editingLayoutGroup.style !== 'row'">{{ t('layout.columnsRowOnly') }}</span>
+            </label>
+            <input id="layout-group-columns" v-model="editingLayoutGroup.columns" type="text" inputmode="numeric"
+                   :placeholder="t('layout.columnsHint')" :disabled="editingLayoutGroup.style !== 'row'">
           </div>
           <icon-field v-model="editingLayoutGroup.icon" :label="t('layout.icon')"
                       :placeholder="t('layout.iconPlaceholder')"></icon-field>
           <div class="form-group">
             <label>{{ t('layout.header') }}</label>
             <select v-model="editingLayoutGroup.header">
-              <option value="">{{ t('layout.notSet') }}</option>
-              <option value="true">{{ t('layout.on') }}</option>
-              <option value="false">{{ t('layout.off') }}</option>
+              <option value="">{{ t('group.headerShow') }}</option>
+              <option value="false">{{ t('group.headerHide') }}</option>
             </select>
           </div>
           <div class="form-group">
-            <label>{{ t('layout.initiallyCollapsed') }}</label>
+            <label class="label-row">
+              <span>{{ t('layout.initiallyCollapsed') }}</span>
+              <span class="label-hint">{{ collapsedHint(editingLayoutGroup.initiallyCollapsed) }}</span>
+            </label>
             <select v-model="editingLayoutGroup.initiallyCollapsed">
               <option value="">{{ t('layout.notSet') }}</option>
               <option value="true">{{ t('layout.on') }}</option>
@@ -812,7 +850,10 @@
             </select>
           </div>
           <div class="form-group">
-            <label>{{ t('layout.useEqualHeights') }}</label>
+            <label class="label-row">
+              <span>{{ t('layout.useEqualHeights') }}</span>
+              <span class="label-hint">{{ equalHeightsHint(editingLayoutGroup.useEqualHeights) }}</span>
+            </label>
             <select v-model="editingLayoutGroup.useEqualHeights">
               <option value="">{{ t('layout.notSet') }}</option>
               <option value="true">{{ t('layout.on') }}</option>
@@ -881,7 +922,10 @@
             <input v-model="editingItem.siteMonitor" type="text" :placeholder="t('item.siteMonitorPlaceholder')">
           </div>
           <div class="form-group">
-            <label>{{ t('item.statusStyle') }}</label>
+            <label class="label-row">
+              <span>{{ t('item.statusStyle') }}</span>
+              <span class="label-hint">{{ statusStyleHint(editingItem.statusStyle) }}</span>
+            </label>
             <select v-model="editingItem.statusStyle">
               <option value="">{{ t('item.statusStyleUnset') }}</option>
               <option value="dot">dot</option>
@@ -889,11 +933,13 @@
             </select>
           </div>
           <div class="form-group">
-            <label>{{ t('item.showStats') }}</label>
+            <label class="label-row">
+              <span>{{ t('item.showStats') }}</span>
+              <span class="label-hint">{{ showStatsHint(editingItem.showStats) }}</span>
+            </label>
             <select v-model="editingItem.showStats">
-              <option value="">{{ t('item.statusStyleUnset') }}</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
+              <option value="">{{ t('item.showStatsFollow') }}</option>
+              <option value="false">{{ t('item.showStatsOff') }}</option>
             </select>
           </div>
           <div class="form-group">
@@ -1040,7 +1086,8 @@
           </div>
           <div class="form-group">
             <label>{{ t('item.weight') }}</label>
-            <input v-model="editingItem.weight" type="text" inputmode="numeric" :placeholder="t('item.weightPlaceholder')">
+            <input v-model="editingItem.weight" type="text" inputmode="numeric"
+                   :placeholder="t('item.weightPlaceholder') + ' ' + t('item.weightDefault')">
           </div>
         </div>
         <div class="modal-actions">
@@ -1066,7 +1113,10 @@
         <h3 class="modal-section-title"><i class="mdi mdi-palette-outline"></i> {{ t('group.appearance') }}</h3>
         <div class="form-grid">
           <div class="form-group tab-field">
-            <label>{{ t('group.tab') }}</label>
+            <label class="label-row">
+              <span>{{ t('group.tab') }}</span>
+              <span class="label-hint">{{ groupTabHint(editingBookmarkGroup.name, editingBookmarkGroup.tab) }}</span>
+            </label>
             <input id="bm-group-tab" v-model="editingBookmarkGroup.tab" list="bm-tab-options" type="text"
                    :placeholder="t('group.tabPlaceholder')" autocomplete="off">
             <datalist id="bm-tab-options">
@@ -1080,30 +1130,35 @@
                 <i class="mdi mdi-close"></i>
               </button>
             </div>
-            <p class="field-hint">{{ t('group.tabHint') }}</p>
           </div>
           <div class="form-group">
             <label>{{ t('group.style') }}</label>
-            <select v-model="editingBookmarkGroup.style">
-              <option value="">{{ t('layout.notSet') }}</option>
+            <select id="bm-group-style" v-model="editingBookmarkGroup.style">
+              <option value="">{{ t('group.styleUnsetColumns') }}</option>
               <option value="columns">columns</option>
               <option value="row">row</option>
             </select>
           </div>
           <div class="form-group">
-            <label>{{ t('group.columns') }}</label>
-            <input v-model="editingBookmarkGroup.columns" type="text" inputmode="numeric" :placeholder="t('layout.columnsHint')">
+            <label class="label-row">
+              <span>{{ t('group.columns') }}</span>
+              <span class="label-hint" v-if="editingBookmarkGroup.style !== 'row'">{{ t('group.columnsRowOnly') }}</span>
+            </label>
+            <input id="bm-group-columns" v-model="editingBookmarkGroup.columns" type="text" inputmode="numeric"
+                   :placeholder="t('layout.columnsHint')" :disabled="editingBookmarkGroup.style !== 'row'">
           </div>
           <div class="form-group">
             <label>{{ t('group.header') }}</label>
             <select v-model="editingBookmarkGroup.header">
-              <option value="">{{ t('layout.notSet') }}</option>
-              <option value="true">{{ t('layout.on') }}</option>
-              <option value="false">{{ t('layout.off') }}</option>
+              <option value="">{{ t('group.headerShow') }}</option>
+              <option value="false">{{ t('group.headerHide') }}</option>
             </select>
           </div>
           <div class="form-group">
-            <label>{{ t('group.initiallyCollapsed') }}</label>
+            <label class="label-row">
+              <span>{{ t('group.initiallyCollapsed') }}</span>
+              <span class="label-hint">{{ collapsedHint(editingBookmarkGroup.initiallyCollapsed) }}</span>
+            </label>
             <select v-model="editingBookmarkGroup.initiallyCollapsed">
               <option value="">{{ t('layout.notSet') }}</option>
               <option value="true">{{ t('layout.on') }}</option>
@@ -1111,7 +1166,10 @@
             </select>
           </div>
           <div class="form-group">
-            <label>{{ t('group.useEqualHeights') }}</label>
+            <label class="label-row">
+              <span>{{ t('group.useEqualHeights') }}</span>
+              <span class="label-hint">{{ equalHeightsHint(editingBookmarkGroup.useEqualHeights) }}</span>
+            </label>
             <select v-model="editingBookmarkGroup.useEqualHeights">
               <option value="">{{ t('layout.notSet') }}</option>
               <option value="true">{{ t('layout.on') }}</option>

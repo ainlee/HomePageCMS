@@ -794,21 +794,29 @@ appRouter.put('/api/homepage-layout', (req, res) => {
       const parsed = yaml.load(content);
       if (parsed && typeof parsed === 'object') settings = parsed;
     }
-    const next = layoutLib.applyLayoutSettings(settings, values, groups);
+    // An out-of-range global switch is not written; the save still goes
+    // through with the rest of the values and answers with the names of the
+    // values that were dropped, so the field's range mark has a server-side
+    // counterpart instead of the value silently vanishing.
+    const applied = layoutLib.applyLayoutSettings(settings, values, groups);
+    const next = applied.settings;
+    const rangeError = applied.outOfRangeKeys.length
+      ? '全域開關超出範圍（5-8），未寫入：' + applied.outOfRangeKeys.join('、')
+      : null;
     const header = settingsHeader(content) || HOMEPAGE_SETTINGS_HEADER.trimEnd();
     const output = header + '\n\n' + yaml.dump(next);
 
     if (exists && content === output) {
-      return res.json({ success: true, data: { groups: layoutLib.readLayoutGroups(next), values: layoutLib.readGlobalValues(next), unchanged: true }, hash: fileHash(file) });
+      return res.json(Object.assign({ success: true, data: { groups: layoutLib.readLayoutGroups(next), values: layoutLib.readGlobalValues(next), unchanged: true }, hash: fileHash(file) }, rangeError ? { error: rangeError } : {}));
     }
 
     copyBackup(file, 'homepage-settings');
     writeFileSafe(file, output);
-    res.json({
+    res.json(Object.assign({
       success: true,
       data: { groups: layoutLib.readLayoutGroups(next), values: layoutLib.readGlobalValues(next) },
       hash: fileHash(file)
-    });
+    }, rangeError ? { error: rangeError } : {}));
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
