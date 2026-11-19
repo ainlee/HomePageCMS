@@ -1598,6 +1598,17 @@ const cmsApp = createApp({
           for (const field of appearanceFields) appearanceLoaded[field] = saved[field] || '';
           settingsTouched = true;
         }
+        // Keep settings.yaml layout order aligned with the reordered group lists,
+        // because Homepage can render groups in layout order. Load layout if it
+        // hasn't been opened yet so the order sync can be persisted.
+        if (!layoutReady.value) {
+          try { await loadLayoutSettings(); } catch (_) {}
+        }
+        if (layoutReady.value) {
+          syncLayoutOrderWithGroupList(groups.value);
+          syncLayoutOrderWithGroupList(bookmarkGroups.value);
+        }
+
         if (layoutDirty.value) {
           const res = await apiFetch('/api/homepage-layout', {
             method: 'PUT',
@@ -1966,11 +1977,30 @@ const cmsApp = createApp({
       return activeTab.value === 'bookmarks' ? bookmarkGroups.value : groups.value;
     }
 
+
+    function syncLayoutOrderWithGroupList(list) {
+      if (!layoutGroups.value || layoutGroups.value.length === 0) return;
+      const nameToIndex = new Map();
+      list.forEach((g, i) => nameToIndex.set(g.name, i));
+      const slots = [];
+      layoutGroups.value.forEach((entry, i) => {
+        if (nameToIndex.has(entry.name)) slots.push(i);
+      });
+      if (slots.length < 2) return;
+      const orderedEntries = list
+        .map((g) => layoutGroups.value.find((entry) => entry.name === g.name))
+        .filter(Boolean);
+      if (orderedEntries.length !== slots.length) return;
+      slots.forEach((slotIndex, i) => {
+        layoutGroups.value[slotIndex] = orderedEntries[i];
+      });
+    }
     function moveGroupUp(gi) {
       const list = activeTab.value === 'bookmarks' ? bookmarkGroups.value : groups.value;
       if (gi <= 0 || gi >= list.length) return;
       const [group] = list.splice(gi, 1);
       list.splice(gi - 1, 0, group);
+      syncLayoutOrderWithGroupList(list);
     }
 
     function moveGroupDown(gi) {
@@ -1978,6 +2008,7 @@ const cmsApp = createApp({
       if (gi < 0 || gi >= list.length - 1) return;
       const [group] = list.splice(gi, 1);
       list.splice(gi + 1, 0, group);
+      syncLayoutOrderWithGroupList(list);
     }
 
     // Group drag & drop
@@ -2088,6 +2119,7 @@ const cmsApp = createApp({
       }
       insertIndex = Math.max(0, Math.min(list.length, insertIndex));
       list.splice(insertIndex, 0, srcGroup);
+      syncLayoutOrderWithGroupList(list);
 
       setDragInteraction(false);
       groupDragSource = null;
@@ -2665,6 +2697,13 @@ const cmsApp = createApp({
 
     async function saveLayoutSettings() {
       try {
+        if (!layoutReady.value) {
+          try { await loadLayoutSettings(); } catch (_) {}
+        }
+        if (layoutReady.value) {
+          syncLayoutOrderWithGroupList(groups.value);
+          syncLayoutOrderWithGroupList(bookmarkGroups.value);
+        }
         const res = await apiFetch('/api/homepage-layout', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
