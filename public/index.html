@@ -101,12 +101,14 @@
         </div>
         <div v-else class="groups-list">
           <template v-if="activeTab === 'services'">
-<div class="groups-list">
-          <div v-for="(group, gi) in groups" :key="group.id" class="group-card"
+          <template v-for="(group, gi) in groups" :key="group.id">
+          <div v-if="draggingGroup && groupDropIndex === gi" class="group-drop-indicator"></div>
+          <div class="group-card"
                :data-group-id="group.id"
-               :class="{ 'drag-over': dragOverGroup === group.id }">
+               :class="{ 'drag-over': dragOverGroup === group.id, 'is-dragging': draggingGroup === group }">
             <div class="group-header">
-              <i class="mdi drag-handle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleGroup(group)"></i>
+              <i class="mdi mdi-drag group-drag" :title="t('group.drag')" @pointerdown="startGroupDrag($event, group, gi)"></i>
+              <i class="mdi group-toggle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleGroup(group)"></i>
               <span class="group-name" @click="toggleGroup(group)">{{ group.name }}</span>
               <span v-if="groupTabOf(group.name)" class="group-tab-tag">
                 <i class="mdi mdi-tab"></i> {{ groupTabOf(group.name) }}
@@ -118,6 +120,12 @@
                  :title="t('common.overrideGlobalTitle')"></i>
               <span class="group-badge">{{ group.items.length }}</span>
               <div class="group-actions">
+                <button @click.stop="moveGroupUp(gi)" class="btn btn-icon" :title="t('group.moveUp')" :disabled="gi === 0">
+                  <i class="mdi mdi-arrow-up"></i>
+                </button>
+                <button @click.stop="moveGroupDown(gi)" class="btn btn-icon" :title="t('group.moveDown')" :disabled="gi === groups.length - 1">
+                  <i class="mdi mdi-arrow-down"></i>
+                </button>
                 <button @click.stop="editGroup(group)" class="btn btn-icon" :title="t('group.edit')">
                   <i class="mdi mdi-pencil"></i>
                 </button>
@@ -168,15 +176,20 @@
               </button>
             </div>
           </div>
+          </template>
+          <div v-if="draggingGroup && groupDropIndex === groups.length" class="group-drop-indicator"></div>
 
 </template>
 
           <template v-if="activeTab === 'bookmarks'">
-            <div v-for="(group, gi) in bookmarkGroups" :key="group.id" class="group-card"
+            <template v-for="(group, gi) in bookmarkGroups" :key="group.id">
+            <div v-if="draggingGroup && groupDropIndex === gi" class="group-drop-indicator"></div>
+            <div class="group-card"
                  :data-group-id="group.id"
-                 :class="{ 'drag-over': dragOverGroup === group.id }">
+                 :class="{ 'drag-over': dragOverGroup === group.id, 'is-dragging': draggingGroup === group }">
               <div class="group-header">
-                <i class="mdi drag-handle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleGroup(group)"></i>
+                <i class="mdi mdi-drag group-drag" :title="t('group.drag')" @pointerdown="startGroupDrag($event, group, gi)"></i>
+                <i class="mdi group-toggle" :class="group.collapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'" @click="toggleGroup(group)"></i>
                 <span class="group-name" @click="toggleGroup(group)">{{ group.name }}</span>
               <span v-if="groupTabOf(group.name)" class="group-tab-tag">
                 <i class="mdi mdi-tab"></i> {{ groupTabOf(group.name) }}
@@ -188,6 +201,12 @@
                  :title="t('common.overrideGlobalTitle')"></i>
               <span class="group-badge">{{ group.items.length }}</span>
               <div class="group-actions">
+                <button @click.stop="moveGroupUp(gi)" class="btn btn-icon" :title="t('group.moveUp')" :disabled="gi === 0">
+                  <i class="mdi mdi-arrow-up"></i>
+                </button>
+                <button @click.stop="moveGroupDown(gi)" class="btn btn-icon" :title="t('group.moveDown')" :disabled="gi === bookmarkGroups.length - 1">
+                  <i class="mdi mdi-arrow-down"></i>
+                </button>
                 <button @click.stop="editBookmarkGroup(group)" class="btn btn-icon" :title="t('group.edit')">
                     <i class="mdi mdi-pencil"></i>
                   </button>
@@ -236,6 +255,8 @@
                 </button>
               </div>
             </div>
+            </template>
+            <div v-if="draggingGroup && groupDropIndex === bookmarkGroups.length" class="group-drop-indicator"></div>
           </template>
           <template v-if="activeTab === 'appearance'">
             <div class="appearance-panel">

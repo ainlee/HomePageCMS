@@ -225,6 +225,7 @@ body {
 }
 
 .group-card.drag-over { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(108,92,231,0.3); }
+.group-card.is-dragging { opacity: 0.35; }
 
 .group-header {
   display: flex;
@@ -293,13 +294,30 @@ body {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   transform: rotate(-1.5deg);
 }
+
+body.hcms-dragging,
+body.hcms-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
 .item-card.is-dragging {
   opacity: 0.35;
 }
-.drop-indicator {
+.drop-indicator,
+.group-drop-indicator {
+  position: relative;
+  height: 0;
+  margin: 0 4px;
   pointer-events: none;
+}
+.drop-indicator::after,
+.group-drop-indicator::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -2px;
   height: 4px;
-  margin: 6px 4px;
   border-radius: 2px;
   background: var(--accent);
   box-shadow: 0 0 10px 1px color-mix(in srgb, var(--accent) 70%, transparent),
@@ -318,8 +336,11 @@ body {
   padding: 8px 12px;
 }
 
-.item-drag { color: var(--text-dim); cursor: grab; font-size: 14px; touch-action: none; }
+.item-drag { color: var(--text-dim); cursor: grab; font-size: 14px; touch-action: none; user-select: none; -webkit-user-select: none; }
 .item-drag:active { cursor: grabbing; }
+
+.group-drag { color: var(--text-dim); cursor: grab; font-size: 16px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.group-drag:active { cursor: grabbing; }
 
 .item-icon-wrap { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .item-icon { font-size: 22px; color: var(--accent); }

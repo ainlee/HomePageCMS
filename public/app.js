@@ -277,6 +277,8 @@ const cmsApp = createApp({
     let overlayPress = null;
     const dropIndex = ref(null);
     const draggingItem = ref(null);
+    const draggingGroup = ref(null);
+    const groupDropIndex = ref(null);
     const backups = ref([]);
     // Hash of the config files as they were when they were loaded. A save sends it
     // back so the server can refuse to overwrite a file that changed in the meantime.
@@ -937,6 +939,9 @@ const cmsApp = createApp({
       dropIndex.value = null;
       dragOverGroup.value = null;
       draggingItem.value = null;
+      if (groupDragPress || groupDragSource) cancelGroupDrag();
+      draggingGroup.value = null;
+      groupDropIndex.value = null;
     });
     const isColumn = computed(() => viewportWidth.value > 768);
     const hasPreviewUrl = computed(() => !!previewUrl.value);
@@ -1146,6 +1151,7 @@ const cmsApp = createApp({
     function startWidgetDrag(event, index) {
       if (event.pointerType === 'mouse' && event.button !== 0) return;
       event.preventDefault();
+      setDragInteraction(true);
       widgetDragFrom = index;
       draggingWidgetIndex.value = index;
       document.addEventListener('pointermove', onWidgetDragMove);
@@ -1177,6 +1183,7 @@ const cmsApp = createApp({
       document.removeEventListener('pointercancel', endWidgetDrag);
       widgetDragFrom = -1;
       draggingWidgetIndex.value = -1;
+      setDragInteraction(false);
     }
 
     // Load data
@@ -1953,6 +1960,160 @@ const cmsApp = createApp({
       bookmarkGroups.value.splice(gi, 1);
       deleteGroupLayoutEntry(g.name);
     }
+    function groupListFor(group) {
+      if (groups.value.some((g) => g.id === group.id)) return groups.value;
+      if (bookmarkGroups.value.some((g) => g.id === group.id)) return bookmarkGroups.value;
+      return activeTab.value === 'bookmarks' ? bookmarkGroups.value : groups.value;
+    }
+
+    function moveGroupUp(gi) {
+      const list = activeTab.value === 'bookmarks' ? bookmarkGroups.value : groups.value;
+      if (gi <= 0 || gi >= list.length) return;
+      const [group] = list.splice(gi, 1);
+      list.splice(gi - 1, 0, group);
+    }
+
+    function moveGroupDown(gi) {
+      const list = activeTab.value === 'bookmarks' ? bookmarkGroups.value : groups.value;
+      if (gi < 0 || gi >= list.length - 1) return;
+      const [group] = list.splice(gi, 1);
+      list.splice(gi + 1, 0, group);
+    }
+
+    // Group drag & drop
+    let groupDragGhost = null;
+    let groupDragPress = null;
+    let groupDragSource = null;
+
+    function startGroupDrag(event, group, gi) {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      groupDragPress = {
+        group,
+        gi,
+        list: groupListFor(group),
+        x: event.clientX,
+        y: event.clientY,
+        card: event.currentTarget && event.currentTarget.closest
+          ? event.currentTarget.closest('.group-card')
+          : null,
+        committed: false
+      };
+      document.addEventListener('pointermove', onGroupDragMove);
+      document.addEventListener('pointerup', endGroupDrag);
+      document.addEventListener('pointercancel', cancelGroupDrag);
+      if (event.pointerType !== 'touch') commitGroupDrag(event.clientX, event.clientY);
+    }
+
+    function commitGroupDrag(x, y) {
+      const press = groupDragPress;
+      if (!press || press.committed) return;
+      press.committed = true;
+      setDragInteraction(true);
+      groupDragSource = { group: press.group, list: press.list };
+      draggingGroup.value = press.group;
+      groupDropIndex.value = press.list.indexOf(press.group);
+      dragOverGroup.value = null;
+      if (press.card) {
+        groupDragGhost = press.card.cloneNode(true);
+        groupDragGhost.classList.add('drag-ghost');
+        groupDragGhost.style.width = press.card.offsetWidth + 'px';
+        groupDragGhost.style.pointerEvents = 'none';
+        document.body.appendChild(groupDragGhost);
+        moveGroupGhost(x, y);
+      }
+    }
+
+    function moveGroupGhost(x, y) {
+      if (!groupDragGhost) return;
+      groupDragGhost.style.left = (x + 14) + 'px';
+      groupDragGhost.style.top = (y + 14) + 'px';
+    }
+
+    function onGroupDragMove(event) {
+      if (!groupDragPress) return;
+      if (!groupDragPress.committed) {
+        const dx = event.clientX - groupDragPress.x;
+        const dy = event.clientY - groupDragPress.y;
+        if (dx * dx + dy * dy < 25) return;
+        commitGroupDrag(event.clientX, event.clientY);
+      }
+      window.getSelection && window.getSelection().removeAllRanges();
+      moveGroupGhost(event.clientX, event.clientY);
+      autoScrollDuringDrag(event);
+      updateGroupDropIndexFromPoint(event.clientX, event.clientY);
+    }
+
+    function updateGroupDropIndexFromPoint(x, y) {
+      if (!groupDragSource) return;
+      const list = groupDragSource.list;
+      const cards = Array.from(document.querySelectorAll('.group-card'))
+        .filter((el) => list.some((g) => g.id === el.getAttribute('data-group-id')));
+      let index = list.length;
+      for (let i = 0; i < cards.length; i++) {
+        const rect = cards[i].getBoundingClientRect();
+        if (y < rect.top + rect.height / 2) { index = i; break; }
+      }
+      if (cards.length && y >= cards[cards.length - 1].getBoundingClientRect().bottom) {
+        index = list.length;
+      }
+      groupDropIndex.value = Math.max(0, Math.min(list.length, index));
+    }
+
+    function endGroupDrag(event) {
+      detachGroupDragListeners();
+      if (!groupDragPress) return;
+      if (groupDragGhost) {
+        groupDragGhost.remove();
+        groupDragGhost = null;
+      }
+
+      if (!groupDragSource) {
+        setDragInteraction(false);
+        draggingGroup.value = null;
+        groupDropIndex.value = null;
+        groupDragPress = null;
+        return;
+      }
+
+      updateGroupDropIndexFromPoint(event.clientX, event.clientY);
+      const list = groupDragSource.list;
+      const srcGroup = groupDragSource.group;
+      const srcIdx = list.indexOf(srcGroup);
+      let insertIndex = groupDropIndex.value != null ? groupDropIndex.value : (srcIdx >= 0 ? srcIdx : list.length);
+      if (srcIdx > -1) {
+        list.splice(srcIdx, 1);
+        if (srcIdx < insertIndex) insertIndex -= 1;
+      }
+      insertIndex = Math.max(0, Math.min(list.length, insertIndex));
+      list.splice(insertIndex, 0, srcGroup);
+
+      setDragInteraction(false);
+      groupDragSource = null;
+      groupDragPress = null;
+      draggingGroup.value = null;
+      groupDropIndex.value = null;
+    }
+
+    function cancelGroupDrag() {
+      detachGroupDragListeners();
+      if (groupDragGhost) {
+        groupDragGhost.remove();
+        groupDragGhost = null;
+      }
+      setDragInteraction(false);
+      groupDragSource = null;
+      groupDragPress = null;
+      draggingGroup.value = null;
+      groupDropIndex.value = null;
+    }
+
+    function detachGroupDragListeners() {
+      document.removeEventListener('pointermove', onGroupDragMove);
+      document.removeEventListener('pointerup', endGroupDrag);
+      document.removeEventListener('pointercancel', cancelGroupDrag);
+    }
 
     function addBookmarkItem(group) {
       editingBookmarkItemId.value = null;
@@ -2719,6 +2880,20 @@ const cmsApp = createApp({
       }
     }
 
+    function preventSelectDuringDrag(event) {
+      event.preventDefault();
+    }
+
+    function setDragInteraction(active) {
+      document.body.classList.toggle('hcms-dragging', active);
+      if (active) {
+        document.addEventListener('selectstart', preventSelectDuringDrag);
+        window.getSelection && window.getSelection().removeAllRanges();
+      } else {
+        document.removeEventListener('selectstart', preventSelectDuringDrag);
+      }
+    }
+
     let dragGhost = null;
     // A finger on the handle records its press before the drag commits: the
     // card lifts only after the finger has moved a short distance, so a tap
@@ -2751,6 +2926,7 @@ const cmsApp = createApp({
       const press = dragPress;
       if (!press || press.committed) return;
       press.committed = true;
+      setDragInteraction(true);
       dragSource = { group: press.group, item: press.item };
       draggingItem.value = press.item;
       dropIndex.value = null;
@@ -2781,6 +2957,7 @@ const cmsApp = createApp({
         if (dx * dx + dy * dy < 25) return;
         commitCardDrag(event.clientX, event.clientY);
       }
+      window.getSelection && window.getSelection().removeAllRanges();
       moveGhost(event.clientX, event.clientY);
       autoScrollDuringDrag(event);
       updateDropIndexFromPoint(event.clientX, event.clientY);
@@ -2795,6 +2972,7 @@ const cmsApp = createApp({
       }
 
       if (!dragSource) {
+        setDragInteraction(false);
         draggingItem.value = null;
         dropIndex.value = null;
         dragOverGroup.value = null;
@@ -2803,31 +2981,43 @@ const cmsApp = createApp({
       }
       const { group: srcGroup, item: srcItem } = dragSource;
 
-      // Determine the target from the release point. Only the groups of the tab
-      // that is on screen are legal drop targets, so both branches look up the
-      // active group list instead of the services list.
+      // Use the release point as the source of truth so the drop matches where
+      // the pointer landed (not a stale position from the last move event).
+      // Disable midpoint hysteresis here so the final drop lands exactly where
+      // the pointer is, even if the finger ends near a card boundary.
+      updateDropIndexFromPoint(event.clientX, event.clientY, { noHysteresis: true });
+
+      // Prefer the tracked drop indicator position; fall back to hit-testing.
       let targetGroup = srcGroup;
       let insertIndex = srcGroup.items.length;
-      const el = document.elementFromPoint(event.clientX, event.clientY);
-      const itemEl = el && el.closest ? el.closest('.item-card') : null;
-      const groupEl = el && el.closest ? el.closest('.group-card') : null;
-      if (itemEl) {
-        const gid = itemEl.getAttribute('data-group-id') || (itemEl.closest('.group-card') && itemEl.closest('.group-card').getAttribute('data-group-id'));
-        const iid = itemEl.getAttribute('data-item-id');
-        const g = activeGroups.value.find((gg) => gg.id === gid);
+      if (dropIndex.value) {
+        const g = activeGroups.value.find((gg) => gg.id === dropIndex.value.groupId);
         if (g) {
           targetGroup = g;
-          const targetItem = g.items.find((i) => i.id === iid);
-          const rect = itemEl.getBoundingClientRect();
-          const idx = targetItem ? g.items.indexOf(targetItem) : g.items.length;
-          insertIndex = event.clientY < rect.top + rect.height / 2 ? idx : idx + 1;
+          insertIndex = dropIndex.value.index;
         }
-      } else if (groupEl) {
-        const gid = groupEl.getAttribute('data-group-id');
-        const g = activeGroups.value.find((gg) => gg.id === gid);
-        if (g) {
-          targetGroup = g;
-          insertIndex = g.items.length;
+      } else {
+        const el = document.elementFromPoint(event.clientX, event.clientY);
+        const itemEl = el && el.closest ? el.closest('.item-card') : null;
+        const groupEl = el && el.closest ? el.closest('.group-card') : null;
+        if (itemEl) {
+          const gid = itemEl.getAttribute('data-group-id') || (itemEl.closest('.group-card') && itemEl.closest('.group-card').getAttribute('data-group-id'));
+          const iid = itemEl.getAttribute('data-item-id');
+          const g = activeGroups.value.find((gg) => gg.id === gid);
+          if (g) {
+            targetGroup = g;
+            const targetItem = g.items.find((i) => i.id === iid);
+            const rect = itemEl.getBoundingClientRect();
+            const idx = targetItem ? g.items.indexOf(targetItem) : g.items.length;
+            insertIndex = event.clientY < rect.top + rect.height / 2 ? idx : idx + 1;
+          }
+        } else if (groupEl) {
+          const gid = groupEl.getAttribute('data-group-id');
+          const g = activeGroups.value.find((gg) => gg.id === gid);
+          if (g) {
+            targetGroup = g;
+            insertIndex = g.items.length;
+          }
         }
       }
 
@@ -2837,6 +3027,7 @@ const cmsApp = createApp({
       insertIndex = Math.max(0, Math.min(targetGroup.items.length, insertIndex));
       targetGroup.items.splice(insertIndex, 0, srcItem);
 
+      setDragInteraction(false);
       dragSource = null;
       dragPress = null;
       draggingItem.value = null;
@@ -2853,6 +3044,7 @@ const cmsApp = createApp({
         dragGhost.remove();
         dragGhost = null;
       }
+      setDragInteraction(false);
       dragSource = null;
       dragPress = null;
       draggingItem.value = null;
@@ -2870,8 +3062,8 @@ const cmsApp = createApp({
       const container = document.querySelector('.editor-panel');
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      const threshold = 70;
-      const step = 14;
+      const threshold = 36;
+      const step = 8;
       if (event.clientY < rect.top + threshold) {
         container.scrollTop = Math.max(0, container.scrollTop - step);
       } else if (event.clientY > rect.bottom - threshold) {
@@ -2879,42 +3071,72 @@ const cmsApp = createApp({
       }
     }
 
-    function updateDropIndexFromPoint(x, y) {
-      const el = document.elementFromPoint(x, y);
-      const itemEl = el && el.closest ? el.closest('.item-card') : null;
-      const groupEl = el && el.closest ? el.closest('.group-card') : null;
-      if (itemEl) {
-        const gid = itemEl.getAttribute('data-group-id') || (itemEl.closest('.group-card') && itemEl.closest('.group-card').getAttribute('data-group-id'));
-        const iid = itemEl.getAttribute('data-item-id');
-        const group = activeGroups.value.find((g) => g.id === gid);
-        if (!group) return;
-        const item = group.items.find((i) => i.id === iid);
-        if (!item) return;
-        const rect = itemEl.getBoundingClientRect();
-        const idx = group.items.indexOf(item);
-        const position = y < rect.top + rect.height / 2 ? idx : idx + 1;
-        dragOverGroup.value = group.id;
-        dropIndex.value = { groupId: group.id, index: position };
-      } else if (groupEl) {
-        const gid = groupEl.getAttribute('data-group-id');
-        const group = activeGroups.value.find((g) => g.id === gid);
-        if (!group) return;
-        dragOverGroup.value = group.id;
-        // Resolve to the nearest item boundary instead of always appending:
-        // a tiny gap between two cards otherwise makes the indicator jump to
-        // the end of the group.
-        const cards = groupEl.querySelectorAll('.item-card');
-        let index = group.items.length;
-        for (let i = 0; i < cards.length; i++) {
-          const rect = cards[i].getBoundingClientRect();
-          if (y < rect.top + rect.height / 2) { index = i; break; }
-          if (y < rect.bottom) { index = i + 1; break; }
+    function updateDropIndexFromPoint(x, y, options) {
+      // Ignore the floating ghost and transient drop indicators so hit-testing
+      // and boundary math use a stable layout under the pointer.
+      const noHysteresis = !!(options && options.noHysteresis);
+      if (dragGhost) dragGhost.style.visibility = 'hidden';
+      const indicators = Array.from(document.querySelectorAll('.drop-indicator, .group-drop-indicator'));
+      indicators.forEach((e) => { e.dataset._dndDisplay = e.style.display; e.style.display = 'none'; });
+      let el = null;
+      let itemEl = null;
+      let groupEl = null;
+      let position = null;
+      let foundGroupId = null;
+      const hysteresis = (rect, idx, groupId) => {
+        const mid = rect.top + rect.height / 2;
+        const margin = 6;
+        if (!noHysteresis && dropIndex.value && dropIndex.value.groupId === groupId
+            && (dropIndex.value.index === idx || dropIndex.value.index === idx + 1)
+            && y >= mid - margin && y <= mid + margin) {
+          return dropIndex.value.index;
         }
-        // If the cursor is below every card, append.
-        if (cards.length && y >= cards[cards.length - 1].getBoundingClientRect().bottom) {
-          index = group.items.length;
+        return y < mid ? idx : idx + 1;
+      };
+      try {
+        const els = (document.elementsFromPoint ? document.elementsFromPoint(x, y) : [document.elementFromPoint(x, y)])
+          .filter((e) => e && (!e.closest || !e.closest('.drag-ghost')));
+        el = els[0] || null;
+        itemEl = el && el.closest ? el.closest('.item-card') : null;
+        groupEl = el && el.closest ? el.closest('.group-card') : null;
+        if (itemEl) {
+          const gid = itemEl.getAttribute('data-group-id') || (itemEl.closest('.group-card') && itemEl.closest('.group-card').getAttribute('data-group-id'));
+          const iid = itemEl.getAttribute('data-item-id');
+          const group = activeGroups.value.find((g) => g.id === gid);
+          if (group) {
+            const item = group.items.find((i) => i.id === iid);
+            if (item) {
+              const rect = itemEl.getBoundingClientRect();
+              const idx = group.items.indexOf(item);
+              position = hysteresis(rect, idx, group.id);
+              foundGroupId = group.id;
+            }
+          }
+        } else if (groupEl) {
+          const gid = groupEl.getAttribute('data-group-id');
+          const group = activeGroups.value.find((g) => g.id === gid);
+          if (group) {
+            const cards = groupEl.querySelectorAll('.item-card');
+            let index = group.items.length;
+            for (let i = 0; i < cards.length; i++) {
+              const rect = cards[i].getBoundingClientRect();
+              if (y < rect.top) { index = i; break; }
+              if (y <= rect.bottom) { index = hysteresis(rect, i, group.id); break; }
+            }
+            if (cards.length && y > cards[cards.length - 1].getBoundingClientRect().bottom) {
+              index = group.items.length;
+            }
+            position = index;
+            foundGroupId = group.id;
+          }
         }
-        dropIndex.value = { groupId: group.id, index };
+      } finally {
+        indicators.forEach((e) => { e.style.display = e.dataset._dndDisplay || ''; delete e.dataset._dndDisplay; });
+        if (dragGhost) dragGhost.style.visibility = '';
+      }
+      if (foundGroupId != null && position != null) {
+        dragOverGroup.value = foundGroupId;
+        dropIndex.value = { groupId: foundGroupId, index: position };
       }
     }
 
@@ -3228,7 +3450,7 @@ const cmsApp = createApp({
       customCssPalette, customCssText, customCssRampRows, customCssSeed, customCssParts,
       setCustomCssSeed, restoreCustomCssTheme, resetCustomCssTheme,
       resetAllCustomCss, confirmResetAllCustomCss, probeFontUrl,
-      movingItem, movingFromGroup, dragOverGroup, dropIndex, draggingItem, backups, toast,
+      movingItem, movingFromGroup, dragOverGroup, dropIndex, draggingItem, draggingGroup, groupDropIndex, backups, toast,
       totalItems, activeGroups, activeTotalItems,
       widgetTypes, widgetTypeLabel, widgetValueHint, widgetHintFor, widgetTypesConcat,
       addWidgetRow, removeWidgetRow, moveWidgetRow, startWidgetDrag, draggingWidgetIndex,
@@ -3239,6 +3461,7 @@ const cmsApp = createApp({
       addItem, editItem, saveItem, deleteItem,
       moveItemToGroup, confirmMove,
       startCardDrag, moveItemUp, moveItemDown,
+      startGroupDrag, moveGroupUp, moveGroupDown,
       togglePreviewCollapsed, refreshPreview, loadBackups, restoreBackup,
       hasUpdate, upgradeLoading, upgradeOffline, checkForUpdates, checkAndUpgrade,
       upgradeEnv,
